@@ -42,14 +42,14 @@ Download the latest build from [GitHub Releases](../../releases/latest).
 
 | Platform | Download |
 | --- | --- |
-| macOS 13+ Apple Silicon | [`potatus-hub-0.3.0-macOS-arm64.zip`](https://github.com/bmminky/potatus-hub/releases/download/v0.3.0/potatus-hub-0.3.0-macOS-arm64.zip) |
-| Windows 11 x64 | [`potatus-hub-0.4.0-windows-x64.zip`](https://github.com/bmminky/potatus-hub/releases/download/v0.4.0/potatus-hub-0.4.0-windows-x64.zip) |
+| macOS 13+ Apple Silicon | [`potatus-hub-0.4.1-macOS-arm64.zip`](https://github.com/bmminky/potatus-hub/releases/download/v0.4.1/potatus-hub-0.4.1-macOS-arm64.zip) |
+| Windows 11 x64 | [`potatus-hub-0.4.1-windows-x64.zip`](https://github.com/bmminky/potatus-hub/releases/download/v0.4.1/potatus-hub-0.4.1-windows-x64.zip) |
 
 SHA-256:
 
 ```text
-1263f77530130e90a5b976ddcf7e38480247ae882cd198641690d15bcbb8e51d  potatus-hub-0.3.0-macOS-arm64.zip
-fdc3ee04c3ee7c4eaab132a14cd6b7a413a3bc9f31b9726a7d65ef6e14fdc518  potatus-hub-0.4.0-windows-x64.zip
+e603dda206791c57ef274b9c96fef089b95fdec611b8ff33b3a5c93a1e2e36d1  potatus-hub-0.4.1-macOS-arm64.zip
+db16dfeaccb364d117bb7b5e07f169e13ad5d92d98fe334484a985396a2dd493  potatus-hub-0.4.1-windows-x64.zip
 ```
 
 ### macOS
