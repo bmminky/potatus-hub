@@ -1,0 +1,18 @@
+<Window x:Class="PotatusHub.ModulePanel"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="potatus hub"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        ResizeMode="NoResize"
+        SizeToContent="Manual">
+    <Grid Background="Transparent">
+        <Grid x:Name="Surface" Margin="16" RenderTransformOrigin="0.5,0.5">
+            <Grid.Effect>
+                <DropShadowEffect BlurRadius="18" ShadowDepth="2" Opacity="0.48" Color="Black" />
+            </Grid.Effect>
+        </Grid>
+    </Grid>
+</Window>

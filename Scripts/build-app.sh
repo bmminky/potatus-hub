@@ -4,8 +4,8 @@ cd "$(dirname "$0")/.."
 
 PRODUCT_NAME="PotatusHub"
 APP_NAME="potatus hub"
-VERSION="0.2.0"
-BUILD_NUMBER="2"
+VERSION="0.3.0"
+BUILD_NUMBER="3"
 BUILD_DIR=".build"
 APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
 

@@ -1,0 +1,52 @@
+name: Windows 11 build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'windows/**'
+      - '.github/workflows/windows-build.yml'
+  pull_request:
+    paths:
+      - 'windows/**'
+      - '.github/workflows/windows-build.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore windows/PotatusHub/PotatusHub.csproj
+
+      - name: Build
+        run: dotnet build windows/PotatusHub/PotatusHub.csproj -c Release --no-restore
+
+      - name: Publish self-contained x64
+        run: >
+          dotnet publish windows/PotatusHub/PotatusHub.csproj
+          -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -o publish/win-x64
+
+      - name: Package and checksum
+        shell: pwsh
+        run: |
+          Compress-Archive -Path publish/win-x64/* -DestinationPath potatus-hub-0.3.0-windows-x64.zip
+          $hash = (Get-FileHash potatus-hub-0.3.0-windows-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  potatus-hub-0.3.0-windows-x64.zip" | Set-Content potatus-hub-0.3.0-windows-x64.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: potatus-hub-0.3.0-windows-x64
+          path: |
+            potatus-hub-0.3.0-windows-x64.zip
+            potatus-hub-0.3.0-windows-x64.sha256
