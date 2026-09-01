@@ -101,7 +101,8 @@ public partial class App : Application
         var panel = CreatePanel(
             ModuleLayout.Linear([kind], ModuleAxis.Horizontal),
             extractedLeft - ModulePanel.ShadowPadding,
-            extractedTop - ModulePanel.ShadowPadding);
+            extractedTop - ModulePanel.ShadowPadding,
+            animate: false);
         SaveLayout();
         return panel;
     }
@@ -182,10 +183,13 @@ public partial class App : Application
         var union = Rect.Union(moving.CardBounds, target.CardBounds);
         var layout = ModuleLayout.Merged(moving.Layout, target.Layout, side, targetKind);
         ClosePanel(moving);
-        ClosePanel(target);
-        var left = union.Left + (union.Width - layout.Size.Width) / 2 - ModulePanel.ShadowPadding;
-        var top = union.Top + (union.Height - layout.Size.Height) / 2 - ModulePanel.ShadowPadding;
-        CreatePanel(layout, left, top);
+        // Reuse target's existing (already on-screen) window instead of
+        // closing it too and creating a brand new one: a freshly created
+        // layered window takes a beat before DWM actually composites its
+        // first frame, which showed up as a brief blank flash on merge.
+        target.SetLayout(layout, animated: false);
+        target.Left = union.Left + (union.Width - layout.Size.Width) / 2 - ModulePanel.ShadowPadding;
+        target.Top = union.Top + (union.Height - layout.Size.Height) / 2 - ModulePanel.ShadowPadding;
         SaveLayout();
     }
 
@@ -206,11 +210,25 @@ public partial class App : Application
         var kinds = AppSettings.Current.VisibleMetrics.OrderBy(kind => kind).ToList();
         if (kinds.Count == 0) return;
         var center = CurrentCenter();
-        foreach (var panel in _panels.ToList()) ClosePanel(panel);
         var layout = ModuleLayout.Linear(kinds, axis);
-        CreatePanel(layout,
-            center.X - layout.Size.Width / 2 - ModulePanel.ShadowPadding,
-            center.Y - layout.Size.Height / 2 - ModulePanel.ShadowPadding);
+        var left = center.X - layout.Size.Width / 2 - ModulePanel.ShadowPadding;
+        var top = center.Y - layout.Size.Height / 2 - ModulePanel.ShadowPadding;
+
+        // Reuse one existing window (if any) instead of closing every panel
+        // and creating a brand new one, which flashes blank for a beat while
+        // the new layered window's first frame gets composited.
+        var survivor = _panels.FirstOrDefault();
+        foreach (var panel in _panels.Where(candidate => candidate != survivor).ToList()) ClosePanel(panel);
+        if (survivor is null)
+        {
+            CreatePanel(layout, left, top, animate: false);
+        }
+        else
+        {
+            survivor.SetLayout(layout, animated: false);
+            survivor.Left = left;
+            survivor.Top = top;
+        }
         SaveLayout();
     }
 
@@ -228,7 +246,8 @@ public partial class App : Application
             CreatePanel(
                 ModuleLayout.Linear([kind], ModuleAxis.Horizontal),
                 cardLeft + index * (ModuleLayout.CellWidth + gap) - ModulePanel.ShadowPadding,
-                center.Y - ModuleLayout.NormalCellHeight / 2 - ModulePanel.ShadowPadding);
+                center.Y - ModuleLayout.NormalCellHeight / 2 - ModulePanel.ShadowPadding,
+                animate: false);
         }
         SaveLayout();
     }
@@ -308,12 +327,23 @@ public partial class App : Application
         });
         menu.Items.Add(BuildLanguageMenu());
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(L.T("potatus hub 정보", "About potatus hub", "potatus hub について", "关于 potatus hub"), null, (_, _) => ShowAbout());
+        menu.Items.Add(L.T("potatus hub 정보", "About potatus hub", "potatus hub について", "关于 potatus hub"), null, (_, _) => Dispatcher.BeginInvoke(ShowAbout));
         menu.Items.Add(L.T("앱 종료하기", "Quit", "アプリを終了", "退出应用"), null, (_, _) => Quit());
         menu.Closed += (_, _) =>
         {
             if (ReferenceEquals(_openMenu, menu)) _openMenu = null;
-            menu.Dispose();
+            // Closed fires from inside the dropdown's own SetVisibleCore/hide
+            // sequence, so disposing `menu` here reenters and crashes that
+            // still-running framework code with ObjectDisposedException.
+            // Defer the dispose to a fresh message so the current one finishes first.
+            var deferred = new System.Windows.Forms.Timer { Interval = 1 };
+            deferred.Tick += (_, _) =>
+            {
+                deferred.Stop();
+                deferred.Dispose();
+                menu.Dispose();
+            };
+            deferred.Start();
         };
         menu.Show(System.Windows.Forms.Cursor.Position);
     }

@@ -1,7 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Text.RegularExpressions;
 using System.Windows.Threading;
 
 namespace PotatusHub;
@@ -132,30 +131,74 @@ internal static class MemorySampler
     }
 }
 
-internal static partial class GpuSampler
+internal static class GpuSampler
 {
-    [GeneratedRegex(@"_phys_\d+_eng_\d+_engtype_[^_]+", RegexOptions.IgnoreCase)]
-    private static partial Regex EngineKeyRegex();
+    private const string DisplayClassPath =
+        @"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}";
+
+    // Task Manager's GPU memory graph is dedicated-usage-vs-capacity, so this
+    // mirrors that: %used of dedicated VRAM, not compute utilization.
+    private static ulong? _dedicatedCapacityBytes;
 
     public static double? Sample()
     {
         try
         {
-            var category = new PerformanceCounterCategory("GPU Engine");
+            var capacity = DedicatedCapacityBytes();
+            if (capacity is not { } capacityBytes || capacityBytes == 0) return null;
+
+            var category = new PerformanceCounterCategory("GPU Adapter Memory");
             var instances = category.GetInstanceNames();
             if (instances.Length == 0) return null;
 
-            var engineTotals = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            double usedBytes = 0;
             foreach (var instance in instances)
             {
-                using var counter = new PerformanceCounter("GPU Engine", "Utilization Percentage", instance, true);
-                var value = Math.Max(0, counter.NextValue());
-                var match = EngineKeyRegex().Match(instance);
-                var key = match.Success ? match.Value : instance;
-                engineTotals[key] = engineTotals.GetValueOrDefault(key) + value;
+                using var counter = new PerformanceCounter("GPU Adapter Memory", "Dedicated Usage", instance, true);
+                usedBytes += Math.Max(0, counter.NextValue());
             }
 
-            return engineTotals.Count == 0 ? null : Math.Clamp(engineTotals.Values.Max(), 0, 100);
+            return Math.Clamp(usedBytes / capacityBytes * 100, 0, 100);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static ulong? DedicatedCapacityBytes()
+    {
+        if (_dedicatedCapacityBytes is { } cached) return cached;
+        try
+        {
+            using var classKey = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(DisplayClassPath);
+            if (classKey is null) return null;
+
+            // AdapterRAM (Win32_VideoController/WMI) is a 32-bit field and
+            // caps out around 4GB on modern GPUs; qwMemorySize is the QWORD
+            // driver-reported value, so it stays accurate past that cap.
+            ulong best = 0;
+            foreach (var subKeyName in classKey.GetSubKeyNames())
+            {
+                try
+                {
+                    // Some subkeys under this class (e.g. "Configuration") are
+                    // access-restricted for standard users; one denied subkey
+                    // must not abort the scan of the rest.
+                    using var adapterKey = classKey.OpenSubKey(subKeyName);
+                    if (adapterKey?.GetValue("HardwareInformation.qwMemorySize") is long size && (ulong)size > best)
+                        best = (ulong)size;
+                }
+                catch (System.Security.SecurityException)
+                {
+                }
+                catch (UnauthorizedAccessException)
+                {
+                }
+            }
+            if (best == 0) return null;
+            _dedicatedCapacityBytes = best;
+            return best;
         }
         catch
         {

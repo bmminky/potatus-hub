@@ -28,8 +28,8 @@ public sealed class LayoutCell
 public sealed class ModuleLayout
 {
     public const double CellWidth = 160;
-    public const double NormalCellHeight = 78;
-    public const double ThreeVerticalCellHeight = 69;
+    public const double NormalCellHeight = 96;
+    public const double ThreeVerticalCellHeight = 70;
 
     public List<LayoutCell> Cells { get; }
 
@@ -68,17 +68,37 @@ public sealed class ModuleLayout
     public ModuleLayout Removing(MetricKind kind)
     {
         var remaining = Cells.Where(cell => cell.Kind != kind).Select(cell => cell.Clone()).ToList();
+        if (remaining.Count > 1)
+        {
+            // Removing the corner of an L-shaped group can leave the two
+            // survivors diagonal to each other. A diagonal 2-cell layout
+            // still renders as a single window (with an empty, transparent
+            // gap cell between them), which looks like two separate cards
+            // but drags as one. Force survivors back onto a single row or
+            // column so a real gap only ever comes from truly separate windows.
+            var sameRow = remaining.Select(cell => cell.Row).Distinct().Count() == 1;
+            var sameColumn = remaining.Select(cell => cell.Column).Distinct().Count() == 1;
+            if (sameRow)
+            {
+                var ordered = remaining.OrderBy(cell => cell.Column).ToList();
+                for (var i = 0; i < ordered.Count; i++) ordered[i].Column = i;
+            }
+            else if (sameColumn)
+            {
+                var ordered = remaining.OrderBy(cell => cell.Row).ToList();
+                for (var i = 0; i < ordered.Count; i++) ordered[i].Row = i;
+            }
+            else
+            {
+                var ordered = remaining.OrderBy(cell => cell.Row).ThenBy(cell => cell.Column).ToList();
+                for (var i = 0; i < ordered.Count; i++)
+                {
+                    ordered[i].Column = i;
+                    ordered[i].Row = 0;
+                }
+            }
+        }
         var result = new ModuleLayout(remaining);
-        if (ColumnCount == 1)
-        {
-            var rows = result.Cells.Select(cell => cell.Row).Distinct().Order().ToList();
-            foreach (var cell in result.Cells) cell.Row = rows.IndexOf(cell.Row);
-        }
-        else if (RowCount == 1)
-        {
-            var columns = result.Cells.Select(cell => cell.Column).Distinct().Order().ToList();
-            foreach (var cell in result.Cells) cell.Column = columns.IndexOf(cell.Column);
-        }
         result.Normalize();
         return result;
     }

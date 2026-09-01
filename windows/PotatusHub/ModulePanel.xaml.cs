@@ -56,34 +56,28 @@ public partial class ModulePanel : Window
 
     public void SetLayout(ModuleLayout layout, bool animated = true)
     {
-        var oldLeft = Left;
-        var oldTop = Top;
         var oldWidth = Width;
         var oldHeight = Height;
-        var center = new Point(oldLeft + oldWidth / 2, oldTop + oldHeight / 2);
+        var center = new Point(Left + oldWidth / 2, Top + oldHeight / 2);
         Layout = layout;
         BuildSurface(keepCenter: false);
         var targetWidth = Width;
         var targetHeight = Height;
-        var targetLeft = center.X - targetWidth / 2;
-        var targetTop = center.Y - targetHeight / 2;
-        if (!animated)
-        {
-            Left = targetLeft;
-            Top = targetTop;
-            return;
-        }
+        Left = center.X - targetWidth / 2;
+        Top = center.Y - targetHeight / 2;
+        if (!animated || oldWidth <= 0 || oldHeight <= 0) return;
 
-        Left = oldLeft;
-        Top = oldTop;
-        Width = oldWidth;
-        Height = oldHeight;
+        // The window (and the tiles' grid columns/rows within it, which are
+        // fixed-pixel sized) already sit at their final target geometry, so
+        // nothing is ever clipped by a still-old, smaller window frame.
+        // Fake the old "grow/shrink" motion with a scale transform on
+        // Surface instead of animating the window's own size.
+        var transform = new ScaleTransform(oldWidth / targetWidth, oldHeight / targetHeight);
+        Surface.RenderTransform = transform;
         var ease = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.35 };
         var duration = TimeSpan.FromMilliseconds(340);
-        AnimateWindowProperty(LeftProperty, targetLeft, ease, duration);
-        AnimateWindowProperty(TopProperty, targetTop, ease, duration);
-        AnimateWindowProperty(WidthProperty, targetWidth, ease, duration);
-        AnimateWindowProperty(HeightProperty, targetHeight, ease, duration);
+        transform.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1, duration) { EasingFunction = ease });
+        transform.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1, duration) { EasingFunction = ease });
     }
 
     public void ClosePermanently()
@@ -170,17 +164,20 @@ public partial class ModulePanel : Window
         var bottom = !Has(column, row + 1);
         var left = !Has(column - 1, row);
         var right = !Has(column + 1, row);
-        const double radius = 14;
+        const double radius = 10;
 
         var tile = new Border
         {
             Background = new SolidColorBrush(Color.FromArgb(0xE6, 0x1E, 0x1E, 0x20)),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(0x3D, 0xFF, 0xFF, 0xFF)),
+            // Matches potatoken hub's card border exactly (#33FFFFFF, 1px) on
+            // outer edges; interior edges between merged tiles keep a
+            // thinner, one-sided line so a shared seam isn't drawn twice.
+            BorderBrush = new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF)),
             BorderThickness = new Thickness(
-                left ? 0.75 : 0,
-                top ? 0.75 : 0,
-                right ? 0.75 : 0.5,
-                bottom ? 0.75 : 0.5),
+                left ? 1 : 0,
+                top ? 1 : 0,
+                right ? 1 : 0.5,
+                bottom ? 1 : 0.5),
             CornerRadius = new CornerRadius(
                 top && left ? radius : 0,
                 top && right ? radius : 0,
@@ -196,9 +193,17 @@ public partial class ModulePanel : Window
     private UIElement BuildCellContent(MetricKind kind)
     {
         var accent = new SolidColorBrush(kind.Accent());
-        var content = new Grid { Margin = new Thickness(16, 11, 16, 11) };
+        // Content is a fixed-height block (heading + small gap + bar)
+        // centered in the cell, rather than stretched with a Star spacer —
+        // the taller cell (matched to potatoken hub's card size) left a big
+        // empty gap above the bar when that spacer absorbed all the slack.
+        var content = new Grid
+        {
+            Margin = new Thickness(16, 0, 16, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
         content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        content.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        content.RowDefinitions.Add(new RowDefinition { Height = new GridLength(10) });
         content.RowDefinitions.Add(new RowDefinition { Height = new GridLength(8) });
 
         var heading = new Grid();
@@ -340,22 +345,4 @@ public partial class ModulePanel : Window
         transform.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(scale, duration) { EasingFunction = ease });
     }
 
-    private void AnimateWindowProperty(
-        DependencyProperty property,
-        double target,
-        IEasingFunction ease,
-        TimeSpan duration)
-    {
-        var animation = new DoubleAnimation(target, duration)
-        {
-            EasingFunction = ease,
-            FillBehavior = FillBehavior.Stop,
-        };
-        animation.Completed += (_, _) =>
-        {
-            BeginAnimation(property, null);
-            SetValue(property, target);
-        };
-        BeginAnimation(property, animation);
-    }
 }
