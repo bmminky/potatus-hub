@@ -121,7 +121,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         menu.addItem(languageMenuItem())
 
-        let about = NSMenuItem(title: L.t(ko: "potatus hub 정보", en: "About potatus hub", ja: "potatus hub について", zh: "关于 potatus hub"), action: #selector(showAbout), keyEquivalent: "")
+        let about = NSMenuItem(title: L.t(ko: "\(AboutPanel.appName) 정보", en: "About \(AboutPanel.appName)", ja: "\(AboutPanel.appName) について", zh: "关于\(AboutPanel.appName)"), action: #selector(showAbout), keyEquivalent: "")
         about.target = self
         menu.addItem(about)
 
@@ -275,21 +275,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc private func showAbout() {
-        let alert = NSAlert()
-        alert.messageText = "potatus hub"
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.0"
-        alert.informativeText = L.t(
-            ko: "버전 \(version)\nApple Silicon용 로컬 시스템 모니터\nCPU, RAM, GPU 사용량을 모듈 형태로 표시합니다.\n\nGitHub\ngithub.com/bmminky/potatus-hub",
-            en: "Version \(version)\nA local system monitor for Apple Silicon.\nDisplays CPU, RAM, and GPU usage as modules.\n\nGitHub\ngithub.com/bmminky/potatus-hub",
-            ja: "バージョン \(version)\nApple Silicon向けローカルシステムモニター。\nCPU・RAM・GPUの使用率をモジュールで表示します。\n\nGitHub\ngithub.com/bmminky/potatus-hub",
-            zh: "版本 \(version)\n适用于 Apple Silicon 的本地系统监视器。\n以模块形式显示 CPU、RAM 和 GPU 使用率。\n\nGitHub\ngithub.com/bmminky/potatus-hub"
-        )
-        alert.addButton(withTitle: L.t(ko: "GitHub 열기", en: "Open GitHub", ja: "GitHub を開く", zh: "打开 GitHub"))
-        alert.addButton(withTitle: L.t(ko: "확인", en: "OK", ja: "OK", zh: "好"))
-        if alert.runModal() == .alertFirstButtonReturn,
-           let url = URL(string: "https://github.com/bmminky/potatus-hub") {
-            NSWorkspace.shared.open(url)
-        }
+        AboutPanel.show()
     }
 
     @objc private func detachAllModules() {
