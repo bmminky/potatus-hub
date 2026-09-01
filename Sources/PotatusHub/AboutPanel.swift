@@ -14,10 +14,15 @@ enum AboutPanel {
         // An LSUIElement app is not automatically foregrounded when its tray
         // action fires, so bring the standard panel forward explicitly.
         NSApp.activate(ignoringOtherApps: true)
-        NSApp.orderFrontStandardAboutPanel(options: [
+        var options: [NSApplication.AboutPanelOptionKey: Any] = [
             .applicationName: appName,
             .credits: credits,
-        ])
+        ]
+        if let icon = Bundle.main.url(forResource: "AppIcon", withExtension: "icns")
+            .flatMap(NSImage.init(contentsOf:)) {
+            options[.applicationIcon] = icon
+        }
+        NSApp.orderFrontStandardAboutPanel(options: options)
     }
 
     private static var credits: NSAttributedString {
