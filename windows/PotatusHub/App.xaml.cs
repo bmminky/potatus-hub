@@ -15,7 +15,6 @@ public partial class App : Application
     private NotifyIcon _tray = null!;
     private Icon? _trayIcon;
     private ContextMenuStrip? _openMenu;
-    private bool _quitting;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -369,7 +368,6 @@ public partial class App : Application
     private void Quit()
     {
         SaveLayout();
-        _quitting = true;
         _monitor.Dispose();
         foreach (var panel in _panels.ToList()) ClosePanel(panel);
         _tray.Visible = false;
