@@ -1,8 +1,8 @@
 # potatus hub
 
-**potato + status** — a small, local-first system monitor for Apple Silicon Macs and Windows 11.
+> **Long-press a module and drag to detach just that module from a group.**
 
-`potatus hub` keeps RAM, CPU, and GPU usage visible as calm, movable modules in the macOS menu bar. Show only the metrics you want, arrange them freely, and let nearby modules merge into one surface.
+`potatus hub` is a small, local-first system monitor for Apple Silicon Macs and Windows 11. It keeps RAM, CPU, and GPU usage visible as calm, movable modules. Show only the metrics you want, arrange them freely, and let nearby modules merge into one surface.
 
 ## Highlights
 
@@ -11,7 +11,6 @@
 - Minimal menu-bar icon with no Dock icon
 - Independent RAM, CPU, and GPU modules — show or hide each one
 - Magnetic merging: modules snap into horizontal, vertical, or L-shaped groups
-- Long-press and drag one module to pull it out of a group
 - Smooth, soft merge, split, show, and hide animations
 - Double-click a grouped module to switch between horizontal and vertical layouts
 - Save module positions and restore them on the next launch
@@ -94,9 +93,9 @@ All measurements are collected locally from macOS. `potatus hub` does not use an
 
 ## 한국어
 
-**potato + status**에서 이름을 가져온 Apple Silicon Mac 및 Windows 11용 로컬 시스템 모니터입니다.
+> **길게 누른 뒤 드래그하면 선택한 모듈만 다시 분리할 수 있습니다.**
 
-RAM·CPU·GPU 사용률을 독립 모듈로 표시합니다. 필요한 항목만 켜고, 가까이 놓은 모듈은 가로·세로·ㄴ자 형태로 자연스럽게 결합됩니다. 길게 누른 뒤 드래그하면 선택한 모듈만 다시 분리할 수 있습니다.
+Apple Silicon Mac 및 Windows 11용 로컬 시스템 모니터입니다. RAM·CPU·GPU 사용률을 독립 모듈로 표시합니다. 필요한 항목만 켜고, 가까이 놓은 모듈은 가로·세로·ㄴ자 형태로 자연스럽게 결합됩니다.
 
 - 메뉴바 아이콘만 표시하는 가벼운 구성
 - RAM·CPU는 1초, GPU는 2초 간격으로 갱신
