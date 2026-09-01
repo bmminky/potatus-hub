@@ -372,7 +372,7 @@ public partial class App : Application
 
     private static void ShowAbout()
     {
-        var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "0.3.0";
+        var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "0.4.1";
         MessageBox.Show(
             L.T(
                 $"potatus hub {version}\nWindows 11용 로컬 시스템 모니터\n만든 사람  bmminky\nhttps://github.com/bmminky/potatus-hub",

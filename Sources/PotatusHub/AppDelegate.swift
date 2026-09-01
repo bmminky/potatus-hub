@@ -37,8 +37,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var pendingSnaps: [ObjectIdentifier: DispatchWorkItem] = [:]
     private var extractionSession: ExtractionSession?
     private var isAnimatingPresentation = false
-    private var orientationAnimation: Timer?
     private var pendingOrientation: (panel: ModulePanel, targetFrame: NSRect, minSize: NSSize, maxSize: NSSize)?
+    private var orientationGeneration = 0
+    private var orientationAnimation: Timer?
     private var detachmentAnimation: Timer?
 
     private static let visibilityPrefix = "PotatusHub.visible."
@@ -387,28 +388,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let targetSize = targetLayout.size
         guard targetSize != currentFrame.size else { return }
 
-        var targetX = currentFrame.midX - targetSize.width / 2
+        // Keep the middle module stationary in both directions. Previously
+        // only vertical→horizontal used this anchor; horizontal→vertical then
+        // placed the new top cell where the old middle cell was, making the
+        // whole stack visibly drop below the cursor's reference point.
+        let anchorKind = panel.kinds[panel.kinds.count / 2]
+        let sourceAnchor = panel.cellFrameOnScreen(for: anchorKind)
+        let targetAnchor = targetLayout.position(for: anchorKind)
+        var targetX: CGFloat
+        var targetY: CGFloat
+        if let sourceAnchor, let targetAnchor {
+            targetX = sourceAnchor.midX
+                - (CGFloat(targetAnchor.column) + 0.5) * ModulePanel.cellSize.width
+            targetY = sourceAnchor.midY
+                - targetSize.height
+                + (CGFloat(targetAnchor.row) + 0.5) * targetLayout.cellHeight
+        } else {
+            targetX = currentFrame.midX - targetSize.width / 2
+            targetY = currentFrame.maxY - targetSize.height
+        }
         if let visible = panel.screen?.visibleFrame {
             targetX = min(max(targetX, visible.minX + 4), visible.maxX - targetSize.width - 4)
+            targetY = min(max(targetY, visible.minY + 4), visible.maxY - targetSize.height - 4)
         }
-        let targetFrame = NSRect(
-            x: targetX,
-            y: currentFrame.maxY - targetSize.height,
-            width: targetSize.width,
-            height: targetSize.height
-        )
-
-        // Install the destination arrangement before driving the frame, just
-        // like potatoken swaps its tier content before its spring resize.
-        panel.update(layout: targetLayout, resizeToFit: false)
-        springOrient(panel, from: currentFrame, to: targetFrame)
+        let targetFrame = NSRect(x: targetX, y: targetY, width: targetSize.width, height: targetSize.height)
+        springOrient(panel, from: currentFrame, to: targetFrame) {
+            panel.update(layout: targetLayout, resizeToFit: false)
+        }
     }
 
-    /// Uses the exact 0.5s damped ease from potatoken hub's large/small
-    /// double-click transition. A timer is needed because the overshoot must
-    /// briefly go beyond the target frame, which AppKit's normal animator
-    /// clamps away.
-    private func springOrient(_ panel: ModulePanel, from startFrame: NSRect, to targetFrame: NSRect) {
+    /// Uses potatoken hub's exact one-pass 0.5s damped spring. Keeping this
+    /// as one timer rather than chaining several AppKit animation contexts is
+    /// important: those transactions were coalescing into a late visual jump.
+    private func springOrient(
+        _ panel: ModulePanel,
+        from startFrame: NSRect,
+        to targetFrame: NSRect,
+        installDestination: () -> Void
+    ) {
+        // Resizing changes the frame origin while its top edge is held fixed.
+        // Do not let that programmatic movement enter the drag-snap pipeline:
+        // a delayed snap could otherwise interrupt the spring after 0.12s.
+        isApplyingSnap = true
         let savedMin = panel.minSize
         let savedMax = panel.maxSize
         let slack: CGFloat = 90
@@ -420,38 +441,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             width: max(startFrame.width, targetFrame.width) + slack,
             height: max(startFrame.height, targetFrame.height) + slack
         )
+        // Replacing the SwiftUI host can otherwise perform one implicit
+        // intrinsic-size transaction before the spring owns the frame. Open
+        // the limits first, install the destination, then explicitly restore
+        // the start frame so the timer is the sole frame owner from frame 1.
+        installDestination()
+        panel.setFrame(startFrame, display: true)
         pendingOrientation = (panel, targetFrame, savedMin, savedMax)
+        orientationGeneration &+= 1
+        let generation = orientationGeneration
+        func frame(at progress: CGFloat) -> NSRect {
+            // A tier change in potatoken grows or shrinks both dimensions in
+            // the same direction, so its spring can safely pass 100% on each
+            // axis. An orientation change does the opposite: width shrinks
+            // while height grows (or vice versa). Letting both axes overshoot
+            // produces a one-frame ultra-thin card, which reads as a diagonal
+            // wobble instead of a soft settle. Keep potatoken's exact spring
+            // progress for the expanding axis, but settle a shrinking axis at
+            // its destination before that overshoot begins.
+            let widthProgress = targetFrame.width < startFrame.width ? min(progress, 1) : progress
+            let heightProgress = targetFrame.height < startFrame.height ? min(progress, 1) : progress
+            let width = startFrame.width + (targetFrame.width - startFrame.width) * widthProgress
+            let height = startFrame.height + (targetFrame.height - startFrame.height) * heightProgress
+            let centerX = startFrame.midX + (targetFrame.midX - startFrame.midX) * widthProgress
+            let topY = startFrame.maxY + (targetFrame.maxY - startFrame.maxY) * heightProgress
+
+            return NSRect(
+                x: centerX - width / 2,
+                y: topY - height,
+                width: width,
+                height: height
+            )
+        }
 
         let duration: CFTimeInterval = 0.5
         let startTime = CACurrentMediaTime()
         let timer = Timer(timeInterval: 1.0 / 120.0, repeats: true) { [weak self, weak panel] timer in
-            Task { @MainActor [weak self, weak panel] in
-                guard let self, let panel else {
+            MainActor.assumeIsolated {
+                guard let self, let panel, self.orientationGeneration == generation else {
                     timer.invalidate()
                     return
                 }
 
                 let progress = min((CACurrentMediaTime() - startTime) / duration, 1)
-                let eased = Self.springEase(progress)
-                panel.setFrame(
-                    NSRect(
-                        x: startFrame.origin.x + (targetFrame.origin.x - startFrame.origin.x) * eased,
-                        y: startFrame.origin.y + (targetFrame.origin.y - startFrame.origin.y) * eased,
-                        width: startFrame.width + (targetFrame.width - startFrame.width) * eased,
-                        height: startFrame.height + (targetFrame.height - startFrame.height) * eased
-                    ),
-                    display: true
-                )
+                panel.setFrame(frame(at: Self.springEase(progress)), display: true)
 
-                if progress >= 1 {
-                    timer.invalidate()
-                    self.orientationAnimation = nil
-                    self.pendingOrientation = nil
-                    panel.minSize = savedMin
-                    panel.maxSize = savedMax
-                    panel.setFrame(targetFrame, display: true)
-                    self.saveLayout()
-                }
+                guard progress >= 1 else { return }
+                timer.invalidate()
+                self.orientationAnimation = nil
+                self.pendingOrientation = nil
+                panel.minSize = savedMin
+                panel.maxSize = savedMax
+                panel.setFrame(targetFrame, display: true)
+                self.isApplyingSnap = false
+                self.saveLayout()
             }
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -459,13 +502,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func finishOrientationAnimation() {
-        guard let timer = orientationAnimation, let pending = pendingOrientation else { return }
-        timer.invalidate()
+        orientationAnimation?.invalidate()
         orientationAnimation = nil
+        guard let pending = pendingOrientation else { return }
+        orientationGeneration &+= 1
         pendingOrientation = nil
         pending.panel.minSize = pending.minSize
         pending.panel.maxSize = pending.maxSize
         pending.panel.setFrame(pending.targetFrame, display: true)
+        isApplyingSnap = false
         saveLayout()
     }
 
@@ -663,6 +708,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             side: side,
             target: targetKind
         )
+        // Never create a group from cells that only meet at a corner or have
+        // an empty gap between them. They remain independent panels instead.
+        guard layout.isEdgeConnected else {
+            isApplyingSnap = false
+            return
+        }
         let size = layout.size
         let joined = moving.frame.union(other.frame)
         let finalFrame = NSRect(
@@ -890,6 +941,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func restorePanels() {
         var restored = Set<MetricKind>()
+        var repairedDisconnectedGroup = false
         if let data = UserDefaults.standard.data(forKey: Self.groupsKey),
            let groups = try? JSONDecoder().decode([SavedGroup].self, from: data) {
             for saved in groups {
@@ -903,8 +955,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 if !frameIsOnScreen(frame) {
                     frame.origin = defaultOrigin(for: layout.kinds[0])
                 }
-                let panel = makePanel(layout: layout, origin: frame.origin)
-                panel.orderFrontRegardless()
+
+                let components = layout.edgeConnectedComponents
+                repairedDisconnectedGroup = repairedDisconnectedGroup || components.count > 1
+                for cells in components {
+                    let component = ModuleLayout(cells: cells)
+                    let minColumn = cells.map(\.position.column).min() ?? 0
+                    let minRow = cells.map(\.position.row).min() ?? 0
+                    let topY = frame.maxY - CGFloat(minRow) * layout.cellHeight
+                    let origin = NSPoint(
+                        x: frame.minX + CGFloat(minColumn) * ModulePanel.cellSize.width,
+                        y: topY - component.size.height
+                    )
+                    let panel = makePanel(layout: component, origin: origin)
+                    panel.orderFrontRegardless()
+                }
             }
         }
 
@@ -914,6 +979,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let origin = legacyFrame.flatMap { frameIsOnScreen($0) ? $0.origin : nil }
                 ?? defaultOrigin(for: kind)
             makePanel(kinds: [kind], origin: origin).orderFrontRegardless()
+        }
+
+        // Persist the repaired topology so a bad legacy shape cannot return
+        // after the next relaunch.
+        if repairedDisconnectedGroup {
+            saveLayout()
         }
     }
 

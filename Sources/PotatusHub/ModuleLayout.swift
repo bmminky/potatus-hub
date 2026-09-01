@@ -69,6 +69,44 @@ struct ModuleLayout: Codable, Hashable {
         columnCount >= rowCount ? .horizontal : .vertical
     }
 
+    /// Cells belong to the same movable module only when they share a full
+    /// horizontal or vertical edge. A corner touch is visual proximity, not a
+    /// physical connection, so it must never make two cards travel together.
+    var edgeConnectedComponents: [[ModuleLayoutCell]] {
+        var remaining = Dictionary(uniqueKeysWithValues: cells.map {
+            (ModuleGridPosition(column: $0.position.column, row: $0.position.row), $0)
+        })
+        var components: [[ModuleLayoutCell]] = []
+
+        while let seed = remaining.values.first {
+            var component: [ModuleLayoutCell] = []
+            var queue = [seed]
+            remaining.removeValue(forKey: seed.position)
+
+            while let cell = queue.popLast() {
+                component.append(cell)
+                let neighbors = [
+                    ModuleGridPosition(column: cell.position.column - 1, row: cell.position.row),
+                    ModuleGridPosition(column: cell.position.column + 1, row: cell.position.row),
+                    ModuleGridPosition(column: cell.position.column, row: cell.position.row - 1),
+                    ModuleGridPosition(column: cell.position.column, row: cell.position.row + 1),
+                ]
+                for position in neighbors {
+                    if let neighbor = remaining.removeValue(forKey: position) {
+                        queue.append(neighbor)
+                    }
+                }
+            }
+            components.append(component)
+        }
+
+        return components
+    }
+
+    var isEdgeConnected: Bool {
+        edgeConnectedComponents.count <= 1
+    }
+
     func position(for kind: MetricKind) -> ModuleGridPosition? {
         cells.first(where: { $0.kind == kind })?.position
     }

@@ -12,6 +12,11 @@ final class ModulePanel: NSPanel {
     var kinds: [MetricKind] { layout.kinds }
     var axis: ModuleAxis { layout.primaryAxis }
     private let monitor: SystemMonitor
+    /// Keep one hosting controller for the lifetime of the panel. Replacing
+    /// the controller during an orientation spring lets AppKit renegotiate the
+    /// borderless window frame on a later run-loop pass, producing the stray
+    /// diagonal frame seen between the requested spring frames.
+    private var hostingController: NSHostingController<AnyView>?
     private var liftedKind: MetricKind?
     private var downScreenPoint: NSPoint?
     private var downFrame: NSRect?
@@ -19,6 +24,10 @@ final class ModulePanel: NSPanel {
     private var longPressWork: DispatchWorkItem?
     private var isDraggingPanel = false
     private var isExtracting = false
+    /// A click that activates a non-key panel can be replayed by AppKit with
+    /// the same event number. Handle it once so a replay cannot cancel a
+    /// freshly-started double-click orientation animation.
+    private var lastHandledMouseDownEventNumber: Int?
 
     var onContextMenu: ((ModulePanel, NSEvent) -> Void)?
     var onDoubleClick: ((ModulePanel) -> Void)?
@@ -90,17 +99,23 @@ final class ModulePanel: NSPanel {
     }
 
     func update(layout: ModuleLayout, resizeToFit: Bool = true) {
+        // Preserve the current frame when the caller owns sizing. The existing
+        // hosting controller only receives a new root view below; it is never
+        // replaced during a transition.
+        let preservedFrame = frame
         self.layout = layout
         rebuildContent(resizeToFit: resizeToFit)
+        if !resizeToFit {
+            setFrame(preservedFrame, display: true)
+        }
     }
 
     func setLiftedKind(_ kind: MetricKind?) {
         let preservedFrame = frame
         liftedKind = kind
         rebuildContent(resizeToFit: false)
-        // Replacing an NSHostingController can temporarily collapse a borderless
-        // panel to 0×0 and shift its origin. Keep the visible group fixed while
-        // only the selected cell's opacity changes.
+        // Keep the visible group fixed while only the selected cell's opacity
+        // changes.
         setFrame(preservedFrame, display: true)
     }
 
@@ -207,6 +222,8 @@ final class ModulePanel: NSPanel {
             onContextMenu?(self, event)
 
         case .leftMouseDown:
+            guard event.eventNumber != lastHandledMouseDownEventNumber else { return }
+            lastHandledMouseDownEventNumber = event.eventNumber
             beginPointerTracking(event)
 
         case .leftMouseDragged where downScreenPoint != nil:
@@ -318,8 +335,8 @@ final class ModulePanel: NSPanel {
     }
 
     private func rebuildContent(resizeToFit: Bool = true) {
-        let hosting = NSHostingController(
-            rootView: ModuleGroupView(
+        let rootView = AnyView(
+            ModuleGroupView(
                 layout: layout,
                 liftedKind: liftedKind,
                 monitor: monitor
@@ -327,8 +344,14 @@ final class ModulePanel: NSPanel {
             // The borderless panel already maps content directly to its frame.
             .ignoresSafeArea()
         )
-        hosting.sizingOptions = []
-        contentViewController = hosting
+        if let hostingController {
+            hostingController.rootView = rootView
+        } else {
+            let hosting = NSHostingController(rootView: rootView)
+            hosting.sizingOptions = []
+            hostingController = hosting
+            contentViewController = hosting
+        }
         contentView?.wantsLayer = true
         if resizeToFit {
             // A transparent titled window adds a titlebar-sized amount when

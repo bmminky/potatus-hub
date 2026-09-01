@@ -40,13 +40,13 @@ jobs:
       - name: Package and checksum
         shell: pwsh
         run: |
-          Compress-Archive -Path publish/win-x64/* -DestinationPath potatus-hub-0.3.0-windows-x64.zip
-          $hash = (Get-FileHash potatus-hub-0.3.0-windows-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  potatus-hub-0.3.0-windows-x64.zip" | Set-Content potatus-hub-0.3.0-windows-x64.sha256
+          Compress-Archive -Path publish/win-x64/* -DestinationPath potatus-hub-0.4.1-windows-x64.zip
+          $hash = (Get-FileHash potatus-hub-0.4.1-windows-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  potatus-hub-0.4.1-windows-x64.zip" | Set-Content potatus-hub-0.4.1-windows-x64.sha256
 
       - uses: actions/upload-artifact@v4
         with:
-          name: potatus-hub-0.3.0-windows-x64
+          name: potatus-hub-0.4.1-windows-x64
           path: |
-            potatus-hub-0.3.0-windows-x64.zip
-            potatus-hub-0.3.0-windows-x64.sha256
+            potatus-hub-0.4.1-windows-x64.zip
+            potatus-hub-0.4.1-windows-x64.sha256

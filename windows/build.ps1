@@ -7,8 +7,8 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $project = Join-Path $PSScriptRoot "PotatusHub\PotatusHub.csproj"
 $publish = Join-Path $root "publish\$Runtime"
-$archive = Join-Path $root "potatus-hub-0.4.0-windows-x64.zip"
-$checksum = Join-Path $root "potatus-hub-0.4.0-windows-x64.sha256"
+$archive = Join-Path $root "potatus-hub-0.4.1-windows-x64.zip"
+$checksum = Join-Path $root "potatus-hub-0.4.1-windows-x64.sha256"
 
 dotnet publish $project `
     -c $Configuration `

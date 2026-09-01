@@ -12,17 +12,31 @@ struct ModuleGroupView: View {
     @ObservedObject var monitor: SystemMonitor
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            ModuleSurfaceShape(layout: layout)
-                // Same material value used by potatoken hub's panel shell.
-                .fill(.regularMaterial)
-            ModuleBorderShape(layout: layout)
-                .stroke(Color.white.opacity(0.24), lineWidth: 0.75)
-            ModuleDividerShape(layout: layout)
-                .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-            cells
+        GeometryReader { geometry in
+            ZStack {
+                // The shell must fill the window's live presentation size.
+                // Fixing it to `layout.size` made the destination card sit at
+                // the animated window's top-left until the frame caught up,
+                // which looked like a diagonal wobble even though the window
+                // itself remained centred.
+                ModuleSurfaceShape(layout: layout)
+                    .fill(.regularMaterial)
+
+                // Keep the destination module grid centred while the shell
+                // expands or contracts around it. The middle module therefore
+                // stays on the same screen point in both directions, and the
+                // outer modules reveal from that centre instead of walking in
+                // from a corner.
+                ZStack(alignment: .topLeading) {
+                    ModuleDividerShape(layout: layout)
+                        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+                    cells
+                }
+                .frame(width: layout.size.width, height: layout.size.height)
+                .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
         }
-        .frame(width: layout.size.width, height: layout.size.height, alignment: .topLeading)
     }
 
     @ViewBuilder
@@ -45,6 +59,13 @@ private struct ModuleSurfaceShape: Shape {
     private let radius: CGFloat = 14
 
     func path(in rect: CGRect) -> Path {
+        // potatoken hub uses SwiftUI's continuous 14pt card corners. A plain
+        // circular arc has the same numeric radius but a visibly different
+        // shoulder, so use the exact curve for ordinary row/column groups.
+        if layout.cells.count == layout.columnCount * layout.rowCount {
+            return RoundedRectangle(cornerRadius: radius, style: .continuous).path(in: rect)
+        }
+
         var path = Path()
         for cell in layout.cells {
             let position = cell.position
@@ -112,6 +133,13 @@ private struct ModuleBorderShape: Shape {
     private let radius: CGFloat = 14
 
     func path(in rect: CGRect) -> Path {
+        // Keep the perimeter stroke on the same continuous curve as the
+        // material surface. L-shaped groups still use the custom edge path
+        // below because they have intentional inner corners.
+        if layout.cells.count == layout.columnCount * layout.rowCount {
+            return RoundedRectangle(cornerRadius: radius, style: .continuous).path(in: rect)
+        }
+
         var path = Path()
         for cell in layout.cells {
             let position = cell.position
