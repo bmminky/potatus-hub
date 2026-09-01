@@ -279,13 +279,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         alert.messageText = "potatus hub"
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.0"
         alert.informativeText = L.t(
-            ko: "버전 \(version)\nApple Silicon용 로컬 시스템 모니터\nCPU, RAM, GPU 사용량을 모듈 형태로 표시합니다.",
-            en: "Version \(version)\nA local system monitor for Apple Silicon.\nDisplays CPU, RAM, and GPU usage as modules.",
-            ja: "バージョン \(version)\nApple Silicon向けローカルシステムモニター。\nCPU・RAM・GPUの使用率をモジュールで表示します。",
-            zh: "版本 \(version)\n适用于 Apple Silicon 的本地系统监视器。\n以模块形式显示 CPU、RAM 和 GPU 使用率。"
+            ko: "버전 \(version)\nApple Silicon용 로컬 시스템 모니터\nCPU, RAM, GPU 사용량을 모듈 형태로 표시합니다.\n\nGitHub\ngithub.com/bmminky/potatus-hub",
+            en: "Version \(version)\nA local system monitor for Apple Silicon.\nDisplays CPU, RAM, and GPU usage as modules.\n\nGitHub\ngithub.com/bmminky/potatus-hub",
+            ja: "バージョン \(version)\nApple Silicon向けローカルシステムモニター。\nCPU・RAM・GPUの使用率をモジュールで表示します。\n\nGitHub\ngithub.com/bmminky/potatus-hub",
+            zh: "版本 \(version)\n适用于 Apple Silicon 的本地系统监视器。\n以模块形式显示 CPU、RAM 和 GPU 使用率。\n\nGitHub\ngithub.com/bmminky/potatus-hub"
         )
+        alert.addButton(withTitle: L.t(ko: "GitHub 열기", en: "Open GitHub", ja: "GitHub を開く", zh: "打开 GitHub"))
         alert.addButton(withTitle: L.t(ko: "확인", en: "OK", ja: "OK", zh: "好"))
-        alert.runModal()
+        if alert.runModal() == .alertFirstButtonReturn,
+           let url = URL(string: "https://github.com/bmminky/potatus-hub") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     @objc private func detachAllModules() {
