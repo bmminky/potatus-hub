@@ -199,9 +199,15 @@ struct ModuleLayout: Codable, Hashable {
     }
 
     /// A row or column has no intentional blank space. If its middle cell is
-    /// removed, close that gap so the two survivors remain attached. L-shaped
-    /// grids intentionally retain their empty corner and are left untouched.
+    /// removed, close that gap so the two survivors remain attached. Removing
+    /// the corner from an L leaves two cells that only touch diagonally; make
+    /// those survivors an ordinary row instead of preserving that accidental
+    /// diagonal relationship.
     private func compactedAfterRemoval(_ remaining: [ModuleLayoutCell]) -> ModuleLayout {
+        if remaining.count == 2, columnCount > 1, rowCount > 1 {
+            return ModuleLayout(kinds: ModuleLayout(cells: remaining).kinds, axis: .horizontal)
+        }
+
         var result = ModuleLayout(cells: remaining)
         if columnCount == 1 {
             let rows = Array(Set(result.cells.map(\.position.row))).sorted()

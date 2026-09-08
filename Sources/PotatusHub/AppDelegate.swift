@@ -203,7 +203,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let visible = panels.filter(\.isVisible)
         guard let screen = statusItem.button?.window?.screen ?? NSScreen.main else { return }
         let gap: CGFloat = 8
-        let totalWidth = visible.reduce(CGFloat(0)) { $0 + $1.frame.width }
+        let totalWidth = visible.reduce(CGFloat(0)) { $0 + $1.visibleFrame.width }
             + CGFloat(max(0, visible.count - 1)) * gap
         var x = screen.visibleFrame.maxX - totalWidth - 18
         let y = screen.visibleFrame.maxY - 88
@@ -213,8 +213,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             context.duration = 0.18
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             for panel in visible {
-                panel.animator().setFrameOrigin(NSPoint(x: x, y: y))
-                x += panel.frame.width + gap
+                panel.setVisibleOrigin(NSPoint(x: x, y: y), animate: true)
+                x += panel.visibleFrame.width + gap
             }
         } completionHandler: { [weak self] in
             Task { @MainActor in
@@ -228,7 +228,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let visible = panels.filter(\.isVisible)
         guard let screen = statusItem.button?.window?.screen ?? NSScreen.main else { return }
         let gap: CGFloat = 8
-        let widest = visible.map(\.frame.width).max() ?? 0
+        let widest = visible.map(\.visibleFrame.width).max() ?? 0
         let x = screen.visibleFrame.maxX - widest - 18
         var y = screen.visibleFrame.maxY - 18
 
@@ -237,8 +237,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             context.duration = 0.18
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             for panel in visible {
-                y -= panel.frame.height
-                panel.animator().setFrameOrigin(NSPoint(x: x, y: y))
+                y -= panel.visibleFrame.height
+                panel.setVisibleOrigin(NSPoint(x: x, y: y), animate: true)
                 y -= gap
             }
         } completionHandler: { [weak self] in
@@ -384,9 +384,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         let targetAxis: ModuleAxis = panel.axis == .horizontal ? .vertical : .horizontal
         let targetLayout = ModuleLayout(kinds: panel.kinds, axis: targetAxis)
+        // springOrient animates the real (padded) window frame directly, so
+        // this stays the window frame throughout — only the *target*, built
+        // below from visible-space quantities, needs converting to match.
         let currentFrame = panel.frame
         let targetSize = targetLayout.size
-        guard targetSize != currentFrame.size else { return }
+        guard targetSize != panel.visibleFrame.size else { return }
 
         // Keep the middle module stationary in both directions. Previously
         // only vertical→horizontal used this anchor; horizontal→vertical then
@@ -404,14 +407,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 - targetSize.height
                 + (CGFloat(targetAnchor.row) + 0.5) * targetLayout.cellHeight
         } else {
-            targetX = currentFrame.midX - targetSize.width / 2
-            targetY = currentFrame.maxY - targetSize.height
+            let visibleNow = panel.visibleFrame
+            targetX = visibleNow.midX - targetSize.width / 2
+            targetY = visibleNow.maxY - targetSize.height
         }
         if let visible = panel.screen?.visibleFrame {
             targetX = min(max(targetX, visible.minX + 4), visible.maxX - targetSize.width - 4)
             targetY = min(max(targetY, visible.minY + 4), visible.maxY - targetSize.height - 4)
         }
-        let targetFrame = NSRect(x: targetX, y: targetY, width: targetSize.width, height: targetSize.height)
+        // targetX/Y/Size describe the visible card; pad out to the window
+        // frame springOrient and panel.minSize/maxSize actually operate on.
+        let targetVisibleFrame = NSRect(x: targetX, y: targetY, width: targetSize.width, height: targetSize.height)
+        let targetFrame = targetVisibleFrame.insetBy(dx: -ModulePanel.shadowMargin, dy: -ModulePanel.shadowMargin)
         springOrient(panel, from: currentFrame, to: targetFrame) {
             panel.update(layout: targetLayout, resizeToFit: false)
         }
@@ -523,6 +530,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSApplication.shared.terminate(nil)
     }
 
+    func windowDidChangeScreen(_ notification: Notification) {
+        guard notification.object is ModulePanel else { return }
+    }
+
+    func windowDidChangeBackingProperties(_ notification: Notification) {
+        guard notification.object is ModulePanel else { return }
+    }
+
     func windowDidMove(_ notification: Notification) {
         guard let moving = notification.object as? ModulePanel else { return }
         guard !isApplyingSnap,
@@ -540,14 +555,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
     }
 
-    private func snap(_ moving: ModulePanel) {
-        guard !isApplyingSnap else { return }
+    @discardableResult
+    private func snap(_ moving: ModulePanel) -> Bool {
+        guard !isApplyingSnap else { return false }
         let others = panels.filter { $0 !== moving && $0.isVisible }
         var best: SnapCandidate?
 
         for other in others {
-            let movingFrame = moving.frame
-            let otherFrame = other.frame
+            let movingFrame = moving.visibleFrame
+            let otherFrame = other.visibleFrame
             let overlap = movingFrame.intersection(otherFrame)
             let preferredAxis = mergeAxis(for: movingFrame, relativeTo: otherFrame)
             let targetKind = other.closestKind(to: NSPoint(x: movingFrame.midX, y: movingFrame.midY))
@@ -617,8 +633,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             }
         }
 
-        guard let best else { return }
+        guard let best else { return false }
         animateMerge(moving, with: best)
+        return true
     }
 
     private func consider(_ candidate: SnapCandidate, asBest best: inout SnapCandidate?) {
@@ -657,13 +674,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func animateMerge(_ moving: ModulePanel, with candidate: SnapCandidate) {
         isApplyingSnap = true
+        // candidate.origin describes where the visible card should land;
+        // moving.frame.origin is the real (padded) window origin, so convert
+        // before driving the window animation.
+        let targetOrigin = NSPoint(
+            x: candidate.origin.x - ModulePanel.shadowMargin,
+            y: candidate.origin.y - ModulePanel.shadowMargin
+        )
         let start = moving.frame.origin
-        let dx = candidate.origin.x - start.x
-        let dy = candidate.origin.y - start.y
+        let dx = targetOrigin.x - start.x
+        let dy = targetOrigin.y - start.y
         let distance = max(1, hypot(dx, dy))
         let overshoot = NSPoint(
-            x: candidate.origin.x + dx / distance * 3,
-            y: candidate.origin.y + dy / distance * 3
+            x: targetOrigin.x + dx / distance * 3,
+            y: targetOrigin.y + dy / distance * 3
         )
 
         NSAnimationContext.runAnimationGroup { context in
@@ -675,7 +699,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.10
                 context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                moving.animator().setFrameOrigin(candidate.origin)
+                moving.animator().setFrameOrigin(targetOrigin)
             } completionHandler: { [weak self, weak moving] in
                 Task { @MainActor in
                     guard let self, let moving else { return }
@@ -715,13 +739,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return
         }
         let size = layout.size
-        let joined = moving.frame.union(other.frame)
-        let finalFrame = NSRect(
+        let joined = moving.visibleFrame.union(other.visibleFrame)
+        let finalVisibleFrame = NSRect(
             x: joined.midX - size.width / 2,
             y: joined.midY - size.height / 2,
             width: size.width,
             height: size.height
         )
+        let finalFrame = finalVisibleFrame.insetBy(dx: -ModulePanel.shadowMargin, dy: -ModulePanel.shadowMargin)
 
         removePanel(moving)
         removePanel(other)
@@ -760,10 +785,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func show(_ kind: MetricKind) {
         setVisible(true, kind: kind)
         guard panel(containing: kind) == nil else { return }
-        let panel = makePanel(kinds: [kind], origin: defaultOrigin(for: kind))
+        let panel = makePanel(kinds: [kind], origin: windowOrigin(forVisibleOrigin: defaultOrigin(for: kind)))
         panel.alphaValue = 0
         panel.orderFrontRegardless()
         panel.animator().alphaValue = 1
+    }
+
+    /// `defaultOrigin` and legacy saved origins are expressed in visible-card
+    /// space; `makePanel`/`setFrameOrigin` want the padded window origin.
+    private func windowOrigin(forVisibleOrigin origin: NSPoint) -> NSPoint {
+        NSPoint(x: origin.x - ModulePanel.shadowMargin, y: origin.y - ModulePanel.shadowMargin)
     }
 
     private func hide(_ kind: MetricKind) {
@@ -777,7 +808,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         let oldFrame = panel.frame
         panel.update(layout: remainingLayout)
-        panel.setFrame(NSRect(origin: oldFrame.origin, size: remainingLayout.size), display: true, animate: true)
+        let newSize = ModulePanel.windowSize(forVisible: remainingLayout.size)
+        panel.setFrame(NSRect(origin: oldFrame.origin, size: newSize), display: true, animate: true)
     }
 
     private func panel(containing kind: MetricKind) -> ModulePanel? {
@@ -794,8 +826,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         pendingSnaps[ObjectIdentifier(source)]?.cancel()
         pendingSnaps[ObjectIdentifier(source)] = nil
 
+        // cellFrame is a visible-card rect; the ghost is a real ModulePanel
+        // whose window is always padded for its shadow, so pad this out too —
+        // otherwise the ghost's visible card wouldn't match a normal panel's.
+        let ghostWindowFrame = cellFrame.insetBy(dx: -ModulePanel.shadowMargin, dy: -ModulePanel.shadowMargin)
         let ghost = ModulePanel(kinds: [kind], monitor: monitor)
-        ghost.setFrame(cellFrame, display: true)
+        ghost.setFrame(ghostWindowFrame, display: true)
         ghost.level = .popUpMenu
         ghost.ignoresMouseEvents = true
         ghost.alphaValue = 0.68
@@ -807,7 +843,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             source: source,
             kind: kind,
             ghost: ghost,
-            initialGhostFrame: cellFrame,
+            initialGhostFrame: ghostWindowFrame,
             initialPointer: pointer
         )
     }
@@ -862,7 +898,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         isApplyingSnap = true
         source.setLiftedKind(nil)
-        let newSize = remainingLayout.size
+        let newSize = ModulePanel.windowSize(forVisible: remainingLayout.size)
         // Keep the group's original anchor fixed. Removing a middle or leading
         // cell only contracts the surface; it must not jump toward another cell.
         let sourceFrame = NSRect(origin: sourceFrameBeforeExtraction.origin, size: newSize)
@@ -883,9 +919,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             detached.animator().alphaValue = 1
         } completionHandler: { [weak self, weak source] in
             Task { @MainActor in
+                guard let self else { return }
                 source?.setFrame(sourceFrame, display: true)
-                self?.isApplyingSnap = false
-                self?.saveLayout()
+                // A long-press extraction creates a new panel instead of
+                // going through ModulePanel's normal drag-end callback. Run
+                // the same docking decision now that both the remaining group
+                // and detached card have their final frames, so dropping onto
+                // another card merges immediately rather than leaving a card
+                // floating above it.
+                self.isApplyingSnap = false
+                if !self.snap(detached) {
+                    self.saveLayout()
+                }
             }
         }
     }
@@ -950,10 +995,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                     .filtering(allowed)
                 guard !layout.cells.isEmpty else { continue }
                 layout.kinds.forEach { restored.insert($0) }
+                // saved.frame is the real (padded) window frame saveLayout()
+                // recorded; convert its origin back to visible-card space so
+                // the cell arithmetic below works in the same units as
+                // layout.cellHeight / ModulePanel.cellSize.
                 let size = layout.size
-                var frame = NSRect(origin: NSRectFromString(saved.frame).origin, size: size)
-                if !frameIsOnScreen(frame) {
-                    frame.origin = defaultOrigin(for: layout.kinds[0])
+                let savedWindowOrigin = NSRectFromString(saved.frame).origin
+                var visibleFrame = NSRect(
+                    origin: NSPoint(
+                        x: savedWindowOrigin.x + ModulePanel.shadowMargin,
+                        y: savedWindowOrigin.y + ModulePanel.shadowMargin
+                    ),
+                    size: size
+                )
+                let windowFrame = ModulePanel.windowSize(forVisible: size)
+                if !frameIsOnScreen(NSRect(origin: savedWindowOrigin, size: windowFrame)) {
+                    visibleFrame.origin = defaultOrigin(for: layout.kinds[0])
                 }
 
                 let components = layout.edgeConnectedComponents
@@ -962,12 +1019,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                     let component = ModuleLayout(cells: cells)
                     let minColumn = cells.map(\.position.column).min() ?? 0
                     let minRow = cells.map(\.position.row).min() ?? 0
-                    let topY = frame.maxY - CGFloat(minRow) * layout.cellHeight
+                    let topY = visibleFrame.maxY - CGFloat(minRow) * layout.cellHeight
                     let origin = NSPoint(
-                        x: frame.minX + CGFloat(minColumn) * ModulePanel.cellSize.width,
+                        x: visibleFrame.minX + CGFloat(minColumn) * ModulePanel.cellSize.width,
                         y: topY - component.size.height
                     )
-                    let panel = makePanel(layout: component, origin: origin)
+                    let panel = makePanel(layout: component, origin: windowOrigin(forVisibleOrigin: origin))
                     panel.orderFrontRegardless()
                 }
             }
@@ -976,8 +1033,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         for kind in MetricKind.allCases where isVisible(kind) && !restored.contains(kind) {
             let legacyKey = Self.legacyFramePrefix + kind.rawValue
             let legacyFrame = UserDefaults.standard.string(forKey: legacyKey).map(NSRectFromString)
+            // A legacy saved frame predates the shadow margin, so its origin
+            // is already window-space (no conversion); the default fallback is
+            // visible-space and needs padding out like everywhere else.
             let origin = legacyFrame.flatMap { frameIsOnScreen($0) ? $0.origin : nil }
-                ?? defaultOrigin(for: kind)
+                ?? windowOrigin(forVisibleOrigin: defaultOrigin(for: kind))
             makePanel(kinds: [kind], origin: origin).orderFrontRegardless()
         }
 

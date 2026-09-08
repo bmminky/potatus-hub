@@ -8,6 +8,49 @@ final class ModulePanel: NSPanel {
     static let cellSize = NSSize(width: 160, height: 69)
     static let singlePanelHeight: CGFloat = 78
 
+    /// Transparent space carried on every edge of the window frame so the
+    /// SwiftUI shadow (see ModuleGroupView) has room to render. AppKit clips
+    /// all drawing to the window's own frame, so a shadow drawn past the
+    /// visible card's edge is otherwise cut off flush with that edge.
+    ///
+    /// Every place in this file and in AppDelegate that used to treat `frame`
+    /// as the visible card's bounds now goes through `visibleFrame` /
+    /// `setVisibleFrame` instead, so the margin is invisible to layout math:
+    /// docking gaps, merge unions, and cell hit-testing all keep working in
+    /// visible-card coordinates.
+    static let shadowMargin: CGFloat = 14
+
+    /// The visible card's bounds, in screen coordinates — `frame` inset by
+    /// the transparent shadow margin on every edge.
+    var visibleFrame: NSRect { frame.insetBy(dx: Self.shadowMargin, dy: Self.shadowMargin) }
+
+    /// Window size for a given visible card size.
+    static func windowSize(forVisible visibleSize: NSSize) -> NSSize {
+        NSSize(width: visibleSize.width + 2 * shadowMargin, height: visibleSize.height + 2 * shadowMargin)
+    }
+
+    /// Sets the window's frame from the desired *visible* card rect, doing the
+    /// margin conversion in one place rather than at each call site.
+    func setVisibleFrame(_ visibleRect: NSRect, display: Bool, animate: Bool = false) {
+        let windowFrame = visibleRect.insetBy(dx: -Self.shadowMargin, dy: -Self.shadowMargin)
+        if animate {
+            animator().setFrame(windowFrame, display: display)
+        } else {
+            setFrame(windowFrame, display: display)
+        }
+    }
+
+    /// Moves the window so the visible card's origin lands at `point`, without
+    /// changing size.
+    func setVisibleOrigin(_ point: NSPoint, animate: Bool = false) {
+        let windowOrigin = NSPoint(x: point.x - Self.shadowMargin, y: point.y - Self.shadowMargin)
+        if animate {
+            animator().setFrameOrigin(windowOrigin)
+        } else {
+            setFrameOrigin(windowOrigin)
+        }
+    }
+
     private(set) var layout: ModuleLayout
     var kinds: [MetricKind] { layout.kinds }
     var axis: ModuleAxis { layout.primaryAxis }
@@ -47,7 +90,7 @@ final class ModulePanel: NSPanel {
         self.layout = ModuleLayout(kinds: kinds, axis: axis)
         self.monitor = monitor
         super.init(
-            contentRect: NSRect(origin: .zero, size: layout.size),
+            contentRect: NSRect(origin: .zero, size: Self.windowSize(forVisible: layout.size)),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -55,7 +98,13 @@ final class ModulePanel: NSPanel {
 
         isOpaque = false
         backgroundColor = .clear
-        hasShadow = true
+        // AppKit's own window shadow is cast from the window's rectangular
+        // alpha mask, not the SwiftUI content's rounded shape (ModuleSurfaceShape)
+        // — against a busy/textured wallpaper that mismatch reads as a hard dark
+        // ring right at the rounded corners, exactly as in potatoken hub. A soft
+        // shadow drawn in SwiftUI (see ModuleGroupView) follows the actual shape
+        // instead.
+        hasShadow = false
         level = .floating
         // Window movement is driven below, from the same pointer state machine
         // that owns long-press extraction. This prevents two drag owners.
@@ -70,7 +119,7 @@ final class ModulePanel: NSPanel {
         self.layout = layout
         self.monitor = monitor
         super.init(
-            contentRect: NSRect(origin: .zero, size: layout.size),
+            contentRect: NSRect(origin: .zero, size: Self.windowSize(forVisible: layout.size)),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -78,7 +127,13 @@ final class ModulePanel: NSPanel {
 
         isOpaque = false
         backgroundColor = .clear
-        hasShadow = true
+        // AppKit's own window shadow is cast from the window's rectangular
+        // alpha mask, not the SwiftUI content's rounded shape (ModuleSurfaceShape)
+        // — against a busy/textured wallpaper that mismatch reads as a hard dark
+        // ring right at the rounded corners, exactly as in potatoken hub. A soft
+        // shadow drawn in SwiftUI (see ModuleGroupView) follows the actual shape
+        // instead.
+        hasShadow = false
         level = .floating
         isMovableByWindowBackground = false
         hidesOnDeactivate = false
@@ -89,6 +144,38 @@ final class ModulePanel: NSPanel {
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    /// AppKit's default implementation fits the frame to whichever screen the
+    /// window is landing on, and resizes/repositions it to do so. Crossing
+    /// into a display with a different backing scale mid-drag made it inject
+    /// this adjustment inline — the window would teleport to a wrong frame
+    /// for one tick, then our own delta-based tracking would snap it back on
+    /// the next mouse-move — reading as a stutter right at the display
+    /// boundary. Dragging here is entirely our own pointer tracking (see
+    /// continuePointerTracking), never native window dragging, so there's no
+    /// reason to let AppKit's screen-fitting run at all.
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        frameRect
+    }
+
+    /// The frame-teleport above is gone, but crossing into a screen with a
+    /// different backing scale still visibly hitches: the SwiftUI-hosted
+    /// content view has to re-rasterize itself at the new pixel density the
+    /// instant `backingScaleFactor` changes, and that redraw is the stutter.
+    /// Pinning this to a constant means it never changes as the panel moves
+    /// between displays, so that redraw never happens mid-drag — the tradeoff
+    /// is that on a non-Retina display the panel renders supersampled rather
+    /// than at native resolution, which costs a little GPU time but never
+    /// looks worse than native.
+    override var backingScaleFactor: CGFloat { 2 }
+
+    override func setFrame(_ frameRect: NSRect, display flag: Bool) {
+        super.setFrame(frameRect, display: flag)
+    }
+
+    override func setFrameOrigin(_ point: NSPoint) {
+        super.setFrameOrigin(point)
+    }
 
     func contains(_ kind: MetricKind) -> Bool {
         kinds.contains(kind)
@@ -127,9 +214,10 @@ final class ModulePanel: NSPanel {
         // detached card acquire the same upward offset. The module grid is
         // already expressed directly inside this window frame, so calculate
         // its screen rect from the frame itself.
+        let visible = visibleFrame
         return NSRect(
-            x: frame.minX + CGFloat(position.column) * Self.cellSize.width,
-            y: frame.maxY - CGFloat(position.row + 1) * layout.cellHeight,
+            x: visible.minX + CGFloat(position.column) * Self.cellSize.width,
+            y: visible.maxY - CGFloat(position.row + 1) * layout.cellHeight,
             width: Self.cellSize.width,
             height: layout.cellHeight
         )
@@ -302,7 +390,8 @@ final class ModulePanel: NSPanel {
             longPressWork?.cancel()
             pendingKind = nil
             isDraggingPanel = true
-            setFrameOrigin(NSPoint(x: startFrame.minX + dx, y: startFrame.minY + dy))
+            let target = NSPoint(x: startFrame.minX + dx, y: startFrame.minY + dy)
+            setFrameOrigin(target)
         }
     }
 
@@ -327,8 +416,12 @@ final class ModulePanel: NSPanel {
     }
 
     private func kind(at point: NSPoint) -> MetricKind? {
-        let column = Int(point.x / Self.cellSize.width)
-        let row = Int((frame.height - point.y) / layout.cellHeight)
+        let margin = Self.shadowMargin
+        let localX = point.x - margin
+        let localY = point.y - margin
+        let visibleHeight = frame.height - 2 * margin
+        let column = Int(localX / Self.cellSize.width)
+        let row = Int((visibleHeight - localY) / layout.cellHeight)
         return layout.cells.first {
             $0.position.column == column && $0.position.row == row
         }?.kind
@@ -343,6 +436,10 @@ final class ModulePanel: NSPanel {
             )
             // The borderless panel already maps content directly to its frame.
             .ignoresSafeArea()
+            // Leaves room around the visible card for its shadow (see
+            // ModuleGroupView) to render into, instead of being clipped flush
+            // with the card's own edge.
+            .padding(Self.shadowMargin)
         )
         if let hostingController {
             hostingController.rootView = rootView
@@ -358,13 +455,17 @@ final class ModulePanel: NSPanel {
             // `setContentSize` is used. The module surface is drawn against
             // the full frame (like potatoken hub), so size that frame itself
             // to the layout and preserve its visible top edge.
+            // The margin is constant across resizes, so anchoring on the
+            // window's own top edge (as before) keeps the visible card's top
+            // edge fixed too.
             let current = frame
+            let windowSize = Self.windowSize(forVisible: layout.size)
             setFrame(
                 NSRect(
                     x: current.minX,
-                    y: current.maxY - layout.size.height,
-                    width: layout.size.width,
-                    height: layout.size.height
+                    y: current.maxY - windowSize.height,
+                    width: windowSize.width,
+                    height: windowSize.height
                 ),
                 display: true
             )

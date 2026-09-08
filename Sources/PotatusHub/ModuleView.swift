@@ -21,6 +21,11 @@ struct ModuleGroupView: View {
                 // itself remained centred.
                 ModuleSurfaceShape(layout: layout)
                     .fill(.regularMaterial)
+                    // The native window shadow is disabled because its
+                    // rectangular alpha mask made a hard black outline at the
+                    // rounded corners. This contour-following shadow has room
+                    // to render inside ModulePanel.shadowMargin instead.
+                    .shadow(color: .black.opacity(0.16), radius: 12, y: 2)
 
                 // Keep the destination module grid centred while the shell
                 // expands or contracts around it. The middle module therefore
