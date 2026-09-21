@@ -232,6 +232,45 @@ public partial class App : Application
         SaveLayout();
     }
 
+    private void CombineAll()
+    {
+        if (_panels.Count <= 1) return;
+
+        var wasVisible = _panels.Any(panel => panel.IsVisible);
+        var survivor = wasVisible
+            ? _panels.First(panel => panel.IsVisible)
+            : _panels[0];
+        var union = _panels.Select(panel => panel.CardBounds)
+            .Aggregate((left, right) => Rect.Union(left, right));
+
+        var positioned = _panels.SelectMany(panel => panel.Layout.Cells.Select(cell => new
+        {
+            cell.Kind,
+            X = panel.CardBounds.Left + (cell.Column + 0.5) * ModuleLayout.CellWidth,
+            Y = panel.CardBounds.Top + (cell.Row + 0.5) * panel.Layout.CellHeight,
+        })).ToList();
+        if (positioned.Count <= 1) return;
+
+        var spreadX = positioned.Max(item => item.X) - positioned.Min(item => item.X);
+        var spreadY = positioned.Max(item => item.Y) - positioned.Min(item => item.Y);
+        var axis = spreadX >= spreadY ? ModuleAxis.Horizontal : ModuleAxis.Vertical;
+        var kinds = axis == ModuleAxis.Horizontal
+            ? positioned.OrderBy(item => item.X).ThenBy(item => item.Y).Select(item => item.Kind)
+            : positioned.OrderBy(item => item.Y).ThenBy(item => item.X).Select(item => item.Kind);
+        var layout = ModuleLayout.Linear(kinds, axis);
+
+        foreach (var panel in _panels.Where(panel => panel != survivor).ToList())
+            ClosePanel(panel);
+
+        survivor.SetLayout(layout, animated: wasVisible);
+        var left = union.Left + (union.Width - survivor.Width) / 2;
+        var top = union.Top + (union.Height - survivor.Height) / 2;
+        var workArea = WorkAreaFor(survivor);
+        survivor.Left = Math.Clamp(left, workArea.Left, Math.Max(workArea.Left, workArea.Right - survivor.Width));
+        survivor.Top = Math.Clamp(top, workArea.Top, Math.Max(workArea.Top, workArea.Bottom - survivor.Height));
+        SaveLayout();
+    }
+
     private void DetachAll()
     {
         var kinds = AppSettings.Current.VisibleMetrics.OrderBy(kind => kind).ToList();
@@ -261,6 +300,28 @@ public partial class App : Application
         }
         var union = _panels.Select(panel => panel.CardBounds).Aggregate((left, right) => Rect.Union(left, right));
         return new Point(union.Left + union.Width / 2, union.Top + union.Height / 2);
+    }
+
+    private static Rect WorkAreaFor(ModulePanel panel)
+    {
+        try
+        {
+            var center = panel.PointToScreen(new Point(panel.ActualWidth / 2, panel.ActualHeight / 2));
+            var area = Screen.FromPoint(new System.Drawing.Point(
+                (int)Math.Round(center.X),
+                (int)Math.Round(center.Y))).WorkingArea;
+            var topLeft = panel.PointFromScreen(new Point(area.Left, area.Top));
+            var bottomRight = panel.PointFromScreen(new Point(area.Right, area.Bottom));
+            return new Rect(
+                panel.Left + topLeft.X,
+                panel.Top + topLeft.Y,
+                bottomRight.X - topLeft.X,
+                bottomRight.Y - topLeft.Y);
+        }
+        catch (InvalidOperationException)
+        {
+            return SystemParameters.WorkArea;
+        }
     }
 
     private void ToggleMetric(MetricKind kind)
@@ -302,32 +363,24 @@ public partial class App : Application
         }
         menu.Items.Add(modules);
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(L.T("새로고침", "Refresh", "更新", "刷新"), null, (_, _) => _monitor.Refresh());
         menu.Items.Add(L.T("숨기기", "Hide", "隠す", "隐藏"), null, (_, _) =>
         {
             SaveLayout();
             foreach (var panel in _panels) panel.HideAnimated();
         });
-        menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(L.T("세로 정렬", "Arrange Vertically", "縦に整列", "纵向排列"), null, (_, _) => Arrange(ModuleAxis.Vertical));
         menu.Items.Add(L.T("가로 정렬", "Arrange Horizontally", "横に整列", "横向排列"), null, (_, _) => Arrange(ModuleAxis.Horizontal));
+        menu.Items.Add(L.T("결합", "Combine", "結合", "合并"), null, (_, _) => CombineAll());
         menu.Items.Add(L.T("분리", "Detach", "分離", "分离"), null, (_, _) => DetachAll());
-
-        var onTop = new ToolStripMenuItem(L.T("항상 위", "Always on Top", "常に手前に表示", "总在最前"), null, (_, _) =>
-        {
-            AppSettings.Current.AlwaysOnTop = !AppSettings.Current.AlwaysOnTop;
-            foreach (var panel in _panels) panel.Topmost = AppSettings.Current.AlwaysOnTop;
-            AppSettings.Save();
-        }) { Checked = AppSettings.Current.AlwaysOnTop };
-        menu.Items.Add(onTop);
-
+        menu.Items.Add(L.T("새로고침", "Refresh", "更新", "刷新"), null, (_, _) => _monitor.Refresh());
+        menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem(L.T("로그인 시 자동 실행", "Launch at Login", "ログイン時に起動", "开机自启动"), null, (_, _) => LaunchAtLogin.Toggle())
         {
             Checked = LaunchAtLogin.IsEnabled,
         });
         menu.Items.Add(BuildLanguageMenu());
-        menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(L.T("potatus hub 정보", "About potatus hub", "potatus hub について", "关于 potatus hub"), null, (_, _) => Dispatcher.BeginInvoke(ShowAbout));
+        menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(L.T("앱 종료하기", "Quit", "アプリを終了", "退出应用"), null, (_, _) => Quit());
         menu.Closed += (_, _) =>
         {

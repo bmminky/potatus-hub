@@ -9,7 +9,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>potatus hub</AssemblyName>
     <RootNamespace>PotatusHub</RootNamespace>
-    <Version>0.4.1</Version>
+    <Version>0.4.4</Version>
     <ApplicationIcon>Resources\AppIcon.ico</ApplicationIcon>
   </PropertyGroup>
 

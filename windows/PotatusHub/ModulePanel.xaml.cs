@@ -16,6 +16,8 @@ public partial class ModulePanel : Window
     private DispatcherTimer? _holdTimer;
     private Border? _pressedTile;
     private Point _pressPoint;
+    private int _presentationVersion;
+    private bool _isHiding;
 
     private sealed record MetricVisual(TextBlock Value, Border Track, Border Fill);
 
@@ -83,6 +85,7 @@ public partial class ModulePanel : Window
     public void ClosePermanently()
     {
         CancelHold();
+        _presentationVersion++;
         _allowClose = true;
         _monitor.PropertyChanged -= OnMonitorChanged;
         Close();
@@ -90,17 +93,29 @@ public partial class ModulePanel : Window
 
     public void ShowAnimated()
     {
-        if (IsVisible) return;
-        Opacity = 0;
-        Surface.RenderTransform = new ScaleTransform(0.92, 0.92);
-        Show();
-        AnimatePresentation(1, 1, hideAfter: false);
+        if (IsVisible && !_isHiding) return;
+        _isHiding = false;
+        var version = ++_presentationVersion;
+        if (!IsVisible)
+        {
+            BeginAnimation(OpacityProperty, null);
+            Opacity = 0;
+            Surface.RenderTransform = new ScaleTransform(0.92, 0.92);
+            Show();
+        }
+        AnimatePresentation(1, 1, hideAfter: false, version);
     }
 
     public void HideAnimated()
     {
-        if (!IsVisible) return;
-        AnimatePresentation(0, 0.94, hideAfter: true);
+        if (!IsVisible || _isHiding) return;
+        _isHiding = true;
+        var version = ++_presentationVersion;
+        // Finish any layout/orientation scale immediately, then run only the
+        // presentation animation. This avoids competing transforms when Hide
+        // is chosen during a double-click transition.
+        Surface.RenderTransform = new ScaleTransform(1, 1);
+        AnimatePresentation(0, 0.94, hideAfter: true, version);
     }
 
     public MetricKind? KindNearest(Point screenPoint)
@@ -331,18 +346,32 @@ public partial class ModulePanel : Window
         visual.Fill.Width = visual.Track.ActualWidth * Math.Clamp((value ?? 0) / 100, 0, 1);
     }
 
-    private void AnimatePresentation(double opacity, double scale, bool hideAfter)
+    private void AnimatePresentation(double opacity, double scale, bool hideAfter, int version)
     {
         var ease = new CubicEase { EasingMode = EasingMode.EaseInOut };
         var duration = TimeSpan.FromMilliseconds(190);
-        var opacityAnimation = new DoubleAnimation(opacity, duration) { EasingFunction = ease };
-        if (hideAfter) opacityAnimation.Completed += (_, _) => Hide();
+        var currentOpacity = Opacity;
+        BeginAnimation(OpacityProperty, null);
+        Opacity = currentOpacity;
+        var opacityAnimation = new DoubleAnimation(currentOpacity, opacity, duration) { EasingFunction = ease };
+        opacityAnimation.Completed += (_, _) =>
+        {
+            if (version != _presentationVersion) return;
+            _isHiding = false;
+            if (hideAfter) Hide();
+        };
         BeginAnimation(OpacityProperty, opacityAnimation);
 
         var transform = Surface.RenderTransform as ScaleTransform ?? new ScaleTransform(1, 1);
+        var currentScaleX = transform.ScaleX;
+        var currentScaleY = transform.ScaleY;
+        transform.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        transform.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        transform.ScaleX = currentScaleX;
+        transform.ScaleY = currentScaleY;
         Surface.RenderTransform = transform;
-        transform.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(scale, duration) { EasingFunction = ease });
-        transform.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(scale, duration) { EasingFunction = ease });
+        transform.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(currentScaleX, scale, duration) { EasingFunction = ease });
+        transform.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(currentScaleY, scale, duration) { EasingFunction = ease });
     }
 
 }
