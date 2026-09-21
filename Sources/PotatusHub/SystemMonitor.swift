@@ -132,13 +132,14 @@ private enum GPUSampler {
 
         do {
             try process.run()
-            process.waitUntilExit()
         } catch {
             return nil
         }
-        guard process.terminationStatus == 0 else { return nil }
-
+        // Drain stdout while the child runs: waiting first can deadlock once
+        // ioreg fills the pipe buffer on machines reporting many properties.
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { return nil }
         guard let output = String(data: data, encoding: .utf8) else { return nil }
         let pattern = #"\"Device Utilization %\"\s*=\s*(\d+)"#
         guard let expression = try? NSRegularExpression(pattern: pattern),

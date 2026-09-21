@@ -101,6 +101,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         refresh.target = self
         menu.addItem(refresh)
 
+        let hide = NSMenuItem(title: L.t(ko: "숨기기", en: "Hide", ja: "隠す", zh: "隐藏"), action: #selector(hidePanels), keyEquivalent: "")
+        hide.target = self
+        menu.addItem(hide)
+
         let vertical = NSMenuItem(title: L.t(ko: "세로 정렬", en: "Arrange Vertically", ja: "縦に整列", zh: "纵向排列"), action: #selector(arrangeModulesVertically), keyEquivalent: "")
         vertical.target = self
         menu.addItem(vertical)
@@ -167,14 +171,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func togglePanelPresentation() {
+        setPanelPresentation(show: !panels.contains { $0.isVisible })
+    }
+
+    @objc private func hidePanels() {
+        setPanelPresentation(show: false)
+    }
+
+    private func setPanelPresentation(show: Bool) {
         guard !isAnimatingPresentation else { return }
-        let hasPresentedPanel = panels.contains { $0.isVisible }
         guard !panels.isEmpty else { return }
+        finishOrientationAnimation()
+        pendingSnaps.values.forEach { $0.cancel() }
+        pendingSnaps.removeAll()
+        saveLayout()
         isAnimatingPresentation = true
         let group = DispatchGroup()
         for panel in panels {
             group.enter()
-            panel.animatePresentation(show: !hasPresentedPanel) {
+            panel.animatePresentation(show: show) {
                 group.leave()
             }
         }
@@ -1049,7 +1064,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func saveLayout() {
-        let groups = panels.filter(\.isVisible).map {
+        // Hidden windows are still enabled modules. Preserve their grouping
+        // and positions when quitting while the presentation is hidden.
+        let groups = panels.map {
             SavedGroup(kinds: $0.kinds, axis: $0.axis, layout: $0.layout, frame: NSStringFromRect($0.frame))
         }
         guard let data = try? JSONEncoder().encode(groups) else { return }

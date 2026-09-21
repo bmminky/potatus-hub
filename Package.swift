@@ -9,5 +9,6 @@ let package = Package(
     ],
     targets: [
         .executableTarget(name: "PotatusHub"),
+        .testTarget(name: "PotatusHubTests", dependencies: ["PotatusHub"]),
     ]
 )
