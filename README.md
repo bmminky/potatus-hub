@@ -15,6 +15,7 @@
 - Double-click a grouped module to switch between horizontal and vertical layouts
 - Save module positions and restore them on the next launch
 - Refresh from the tray or a module context menu
+- macOS: Combine enabled modules into one horizontal or vertical group from either context menu. Refresh appears directly below Detach.
 - macOS: Hide all modules from either context menu; left-click the menu-bar icon to show them again. Hidden modules retain their saved layout.
 - Korean, English, Japanese, and Chinese interface support
 - Optional launch at login
@@ -43,15 +44,15 @@ Download the latest build from [GitHub Releases](../../releases/latest).
 
 | Platform | Download |
 | --- | --- |
-| macOS 13+ Apple Silicon | [Download macOS (Apple Silicon)](https://github.com/bmminky/potatus-hub/releases/download/v0.4.2/potatus-hub-0.4.2-macOS-arm64.zip) |
+| macOS 13+ Apple Silicon | [Download macOS (Apple Silicon)](https://github.com/bmminky/potatus-hub/releases/download/v0.4.3/potatus-hub-0.4.3-macOS-arm64.zip) |
 | Windows 11 x64 | [`potatus-hub-0.4.1-windows-x64.zip`](https://github.com/bmminky/potatus-hub/releases/download/v0.4.1/potatus-hub-0.4.1-windows-x64.zip) |
 
-macOS is now 0.4.2; Windows remains the unchanged 0.4.1 build.
+macOS is now 0.4.3; Windows remains the unchanged 0.4.1 build.
 
 SHA-256:
 
 ```text
-0f9f01b5e0f361fb32144ccf56df50285f60fc91dd6ad83ce89fe627524eee11  potatus-hub-0.4.2-macOS-arm64.zip
+bd8a6f932c14f267b1d0db44da210620cd5806061420d126fc5dea087a59a3c8  potatus-hub-0.4.3-macOS-arm64.zip
 db16dfeaccb364d117bb7b5e07f169e13ad5d92d98fe334484a985396a2dd493  potatus-hub-0.4.1-windows-x64.zip
 ```
 

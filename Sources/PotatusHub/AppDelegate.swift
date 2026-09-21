@@ -97,10 +97,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         menu.addItem(.separator())
-        let refresh = NSMenuItem(title: L.t(ko: "새로고침", en: "Refresh", ja: "更新", zh: "刷新"), action: #selector(refresh), keyEquivalent: "")
-        refresh.target = self
-        menu.addItem(refresh)
-
         let hide = NSMenuItem(title: L.t(ko: "숨기기", en: "Hide", ja: "隠す", zh: "隐藏"), action: #selector(hidePanels), keyEquivalent: "")
         hide.target = self
         menu.addItem(hide)
@@ -113,10 +109,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         horizontal.target = self
         menu.addItem(horizontal)
 
+        let combine = NSMenuItem(title: L.t(ko: "결합", en: "Combine", ja: "結合", zh: "合并"), action: #selector(combineAllModules), keyEquivalent: "")
+        combine.target = self
+        combine.isEnabled = panels.count > 1
+        menu.addItem(combine)
+
         let detach = NSMenuItem(title: L.t(ko: "분리", en: "Detach", ja: "分離", zh: "分离"), action: #selector(detachAllModules), keyEquivalent: "")
         detach.target = self
         detach.isEnabled = panels.contains { $0.kinds.count > 1 }
         menu.addItem(detach)
+
+        let refresh = NSMenuItem(title: L.t(ko: "새로고침", en: "Refresh", ja: "更新", zh: "刷新"), action: #selector(refresh), keyEquivalent: "")
+        refresh.target = self
+        menu.addItem(refresh)
 
         menu.addItem(.separator())
         let launchAtLogin = NSMenuItem(title: L.t(ko: "로그인 시 자동 실행", en: "Launch at Login", ja: "ログイン時に自動起動", zh: "登录时启动"), action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
@@ -292,6 +297,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func showAbout() {
         AboutPanel.show()
+    }
+
+    @objc private func combineAllModules() {
+        guard panels.count > 1, !isAnimatingPresentation, !isApplyingSnap,
+              extractionSession == nil else { return }
+        finishOrientationAnimation()
+        let cells = panels.flatMap { panel in
+            panel.kinds.compactMap { kind in
+                panel.cellFrameOnScreen(for: kind).map { (kind: kind, frame: $0) }
+            }
+        }
+        guard cells.count > 1 else { return }
+        let xs = cells.map { $0.frame.midX }
+        let ys = cells.map { $0.frame.midY }
+        let horizontalSpread = (xs.max() ?? 0) - (xs.min() ?? 0)
+        let verticalSpread = (ys.max() ?? 0) - (ys.min() ?? 0)
+        let axis: ModuleAxis = horizontalSpread >= verticalSpread ? .horizontal : .vertical
+        let sorted = cells.sorted {
+            if axis == .horizontal {
+                return $0.frame.midX == $1.frame.midX
+                    ? $0.frame.midY > $1.frame.midY : $0.frame.midX < $1.frame.midX
+            }
+            return $0.frame.midY == $1.frame.midY
+                ? $0.frame.midX < $1.frame.midX : $0.frame.midY > $1.frame.midY
+        }
+        let layout = ModuleLayout(kinds: sorted.map(\.kind), axis: axis)
+        let bounds = cells.reduce(CGRect.null) { $0.union($1.frame) }
+        var origin = NSPoint(x: bounds.midX - layout.size.width / 2,
+                             y: bounds.midY - layout.size.height / 2)
+        let anchor = panels.first(where: { $0.isVisible }) ?? panels[0]
+        if let screen = anchor.screen?.visibleFrame {
+            origin.x = max(screen.minX + 4, min(origin.x, screen.maxX - layout.size.width - 4))
+            origin.y = max(screen.minY + 4, min(origin.y, screen.maxY - layout.size.height - 4))
+        }
+        let wasPresented = panels.contains { $0.isVisible }
+        isApplyingSnap = true
+        let previous = panels
+        previous.forEach(removePanel)
+        let combined = makePanel(layout: layout, origin: windowOrigin(forVisibleOrigin: origin))
+        if wasPresented {
+            combined.orderFrontRegardless()
+            combined.animatePudding(axis: axis)
+        }
+        isApplyingSnap = false
+        saveLayout()
     }
 
     @objc private func detachAllModules() {
