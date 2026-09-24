@@ -44,15 +44,15 @@ Download the latest build from [GitHub Releases](../../releases/latest).
 
 | Platform | Download |
 | --- | --- |
-| macOS 13+ Apple Silicon | [Download macOS (Apple Silicon)](https://github.com/bmminky/potatus-hub/releases/download/v0.4.3/potatus-hub-0.4.3-macOS-arm64.zip) |
+| macOS 13+ Apple Silicon | [Download macOS (Apple Silicon)](https://github.com/bmminky/potatus-hub/releases/download/v0.4.5/potatus-hub-0.4.5-macOS-arm64.zip) |
 | Windows 11 x64 | [`potatus-hub-0.4.4-windows-x64.zip`](https://github.com/bmminky/potatus-hub/releases/download/v0.4.4/potatus-hub-0.4.4-windows-x64.zip) |
 
-macOS is now 0.4.3; Windows 0.4.4 adds spatial module combining, the updated context menu, and hide/show transition handling.
+macOS 0.4.5 softens the module shadow and keeps its rounded corners free of a square clipping edge. Windows remains the unchanged 0.4.4 build.
 
 SHA-256:
 
 ```text
-bd8a6f932c14f267b1d0db44da210620cd5806061420d126fc5dea087a59a3c8  potatus-hub-0.4.3-macOS-arm64.zip
+42bcf7b2f4f53f51bc2ce056e8ab005db23ed6d82498ed941ba5649f14739b1e  potatus-hub-0.4.5-macOS-arm64.zip
 d3c50fac26be746eb501dfc2af3c947c5b584106d26cbf4ace435cff546da46a  potatus-hub-0.4.4-windows-x64.zip
 ```
 

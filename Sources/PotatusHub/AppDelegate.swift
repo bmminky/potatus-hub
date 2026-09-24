@@ -45,6 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private static let visibilityPrefix = "PotatusHub.visible."
     private static let legacyFramePrefix = "PotatusHub.frame."
     private static let groupsKey = "PotatusHub.groups.v1"
+    private static let savedShadowMarginKey = "PotatusHub.savedShadowMargin"
     private let snapDistance: CGFloat = 28
     private let minimumMergeOverlap = NSSize(width: 30, height: 22)
     private let horizontalLaneTolerance: CGFloat = 32
@@ -1052,6 +1053,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func restorePanels() {
         var restored = Set<MetricKind>()
         var repairedDisconnectedGroup = false
+        // Previously saved frames used 14pt, 8pt or 0pt padding. Keep their
+        // visible cards in place as the shadow's rendering margin changes.
+        let savedMargin = UserDefaults.standard.object(forKey: Self.savedShadowMarginKey)
+            .flatMap { $0 as? CGFloat } ?? 14
         if let data = UserDefaults.standard.data(forKey: Self.groupsKey),
            let groups = try? JSONDecoder().decode([SavedGroup].self, from: data) {
             for saved in groups {
@@ -1068,13 +1073,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 let savedWindowOrigin = NSRectFromString(saved.frame).origin
                 var visibleFrame = NSRect(
                     origin: NSPoint(
-                        x: savedWindowOrigin.x + ModulePanel.shadowMargin,
-                        y: savedWindowOrigin.y + ModulePanel.shadowMargin
+                        x: savedWindowOrigin.x + savedMargin,
+                        y: savedWindowOrigin.y + savedMargin
                     ),
                     size: size
                 )
                 let windowFrame = ModulePanel.windowSize(forVisible: size)
-                if !frameIsOnScreen(NSRect(origin: savedWindowOrigin, size: windowFrame)) {
+                if !frameIsOnScreen(NSRect(origin: windowOrigin(forVisibleOrigin: visibleFrame.origin), size: windowFrame)) {
                     visibleFrame.origin = defaultOrigin(for: layout.kinds[0])
                 }
 
@@ -1121,6 +1126,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         guard let data = try? JSONEncoder().encode(groups) else { return }
         UserDefaults.standard.set(data, forKey: Self.groupsKey)
+        UserDefaults.standard.set(Double(ModulePanel.shadowMargin), forKey: Self.savedShadowMarginKey)
     }
 
     private func isVisible(_ kind: MetricKind) -> Bool {

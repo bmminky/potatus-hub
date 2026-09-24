@@ -8,17 +8,16 @@ final class ModulePanel: NSPanel {
     static let cellSize = NSSize(width: 160, height: 69)
     static let singlePanelHeight: CGFloat = 78
 
-    /// Transparent space carried on every edge of the window frame so the
-    /// SwiftUI shadow (see ModuleGroupView) has room to render. AppKit clips
-    /// all drawing to the window's own frame, so a shadow drawn past the
-    /// visible card's edge is otherwise cut off flush with that edge.
+    /// Transparent room for the shape-following shadow. The 0pt experiment
+    /// clipped the blur to the window's square bounds, exposing its corners.
+    /// This margin lets the shorter, subtler shadow fade out naturally.
     ///
     /// Every place in this file and in AppDelegate that used to treat `frame`
     /// as the visible card's bounds now goes through `visibleFrame` /
     /// `setVisibleFrame` instead, so the margin is invisible to layout math:
     /// docking gaps, merge unions, and cell hit-testing all keep working in
     /// visible-card coordinates.
-    static let shadowMargin: CGFloat = 14
+    static let shadowMargin: CGFloat = 18
 
     /// The visible card's bounds, in screen coordinates — `frame` inset by
     /// the transparent shadow margin on every edge.
@@ -420,6 +419,8 @@ final class ModulePanel: NSPanel {
         let localX = point.x - margin
         let localY = point.y - margin
         let visibleHeight = frame.height - 2 * margin
+        guard localX >= 0, localX < frame.width - 2 * margin,
+              localY >= 0, localY < visibleHeight else { return nil }
         let column = Int(localX / Self.cellSize.width)
         let row = Int((visibleHeight - localY) / layout.cellHeight)
         return layout.cells.first {
