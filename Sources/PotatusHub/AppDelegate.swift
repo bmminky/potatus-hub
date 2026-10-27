@@ -67,7 +67,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         restorePanels()
-        monitor.start()
+
+        // Occlusion covers hide, screen sleep, lock and another Space in one
+        // signal; the workspace notifications are a fallback so sampling
+        // always resumes.
+        let center = NotificationCenter.default
+        center.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: nil, queue: .main) {
+            [weak self] note in
+            guard note.object is ModulePanel else { return }
+            MainActor.assumeIsolated { self?.updateSampling() }
+        }
+        let workspace = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.screensDidWakeNotification, NSWorkspace.sessionDidBecomeActiveNotification] {
+            workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.updateSampling() }
+            }
+        }
+        updateSampling()
+    }
+
+    /// Sample only while some panel is actually on screen.
+    private func updateSampling() {
+        if panels.contains(where: { $0.occlusionState.contains(.visible) }) {
+            monitor.start()
+        } else {
+            monitor.stop()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -201,6 +226,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         group.notify(queue: .main) { [weak self] in
             self?.isAnimatingPresentation = false
+            self?.updateSampling()
         }
     }
 
@@ -1048,6 +1074,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panel.orderOut(nil)
         panel.delegate = nil
         panels.removeAll { $0 === panel }
+        updateSampling()
     }
 
     private func restorePanels() {

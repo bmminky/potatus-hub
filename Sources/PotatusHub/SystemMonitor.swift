@@ -1,5 +1,6 @@
 import Foundation
 import Darwin
+import IOKit
 
 @MainActor
 final class SystemMonitor: ObservableObject {
@@ -12,16 +13,22 @@ final class SystemMonitor: ObservableObject {
     private var gpuRefreshInFlight = false
     private var refreshCount = 0
 
-    init() {
-        _ = cpuSampler.sample()
-    }
-
+    /// Idempotent: AppDelegate calls this whenever panel visibility may have
+    /// changed. Sampling only runs while a panel can actually be seen.
     func start() {
         guard timer == nil else { return }
-        refresh()
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refresh() }
+        // A pause leaves the CPU baseline stale; re-baseline so the first
+        // reading covers one tick, not the whole time we were stopped.
+        _ = cpuSampler.sample()
+        refreshCount = 0
+        refresh(includeCPU: false)
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refresh() }
         }
+        // Lets the system coalesce this wakeup with other timers.
+        timer.tolerance = 0.25
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
     }
 
     func stop() {
@@ -30,13 +37,24 @@ final class SystemMonitor: ObservableObject {
     }
 
     func refresh() {
-        ramUsage = MemorySampler.sample()
-        cpuUsage = cpuSampler.sample()
+        refresh(includeCPU: true)
+    }
+
+    private func refresh(includeCPU: Bool) {
+        publish(\.ramUsage, MemorySampler.sample())
+        if includeCPU { publish(\.cpuUsage, cpuSampler.sample()) }
 
         refreshCount += 1
         if refreshCount == 1 || refreshCount.isMultiple(of: 2) {
             refreshGPU()
         }
+    }
+
+    /// Panels show whole percents, so a change below 1% is not worth a SwiftUI
+    /// update. Storing the rounded value makes the equality check exact.
+    private func publish(_ keyPath: ReferenceWritableKeyPath<SystemMonitor, Double?>, _ value: Double?) {
+        let rounded = value?.rounded()
+        if self[keyPath: keyPath] != rounded { self[keyPath: keyPath] = rounded }
     }
 
     func value(for kind: MetricKind) -> Double? {
@@ -54,7 +72,7 @@ final class SystemMonitor: ObservableObject {
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let value = GPUSampler.sample()
             DispatchQueue.main.async {
-                self?.gpuUsage = value
+                self?.publish(\.gpuUsage, value)
                 self?.gpuRefreshInFlight = false
             }
         }
@@ -89,7 +107,8 @@ private enum MemorySampler {
 }
 
 private final class CPUSampler {
-    private var previousTicks: [UInt32]?
+    private typealias Ticks = (user: UInt32, system: UInt32, idle: UInt32, nice: UInt32)
+    private var previousTicks: Ticks?
 
     func sample() -> Double? {
         var load = host_cpu_load_info_data_t()
@@ -103,52 +122,36 @@ private final class CPUSampler {
         }
         guard result == KERN_SUCCESS else { return nil }
 
-        let current = withUnsafeBytes(of: load.cpu_ticks) {
-            Array($0.bindMemory(to: UInt32.self))
-        }
-        guard let previousTicks, previousTicks.count == current.count else {
-            self.previousTicks = current
+        // cpu_ticks is indexed by CPU_STATE_USER/SYSTEM/IDLE/NICE (0...3).
+        let current: Ticks = (load.cpu_ticks.0, load.cpu_ticks.1, load.cpu_ticks.2, load.cpu_ticks.3)
+        guard let previous = previousTicks else {
+            previousTicks = current
             return nil
         }
-        self.previousTicks = current
+        previousTicks = current
 
-        let deltas = zip(current, previousTicks).map { $0 &- $1 }
-        let total = deltas.reduce(UInt64(0)) { $0 + UInt64($1) }
-        guard total > 0, deltas.count > Int(CPU_STATE_IDLE) else { return nil }
-
-        let idle = UInt64(deltas[Int(CPU_STATE_IDLE)])
+        let idle = UInt64(current.idle &- previous.idle)
+        let total = UInt64(current.user &- previous.user) + UInt64(current.system &- previous.system)
+            + idle + UInt64(current.nice &- previous.nice)
+        guard total > 0 else { return nil }
         return min(100, max(0, Double(total - idle) / Double(total) * 100))
     }
 }
 
 private enum GPUSampler {
+    /// Same counter `ioreg -c AGXAccelerator` prints, read in-process so each
+    /// sample no longer forks a subprocess and parses its whole output.
     static func sample() -> Double? {
-        let process = Process()
-        let pipe = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/usr/sbin/ioreg")
-        process.arguments = ["-r", "-d", "1", "-w", "0", "-c", "AGXAccelerator"]
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
+        guard let matching = IOServiceMatching("AGXAccelerator") else { return nil }
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, matching)
+        guard service != 0 else { return nil }
+        defer { IOObjectRelease(service) }
 
-        do {
-            try process.run()
-        } catch {
-            return nil
-        }
-        // Drain stdout while the child runs: waiting first can deadlock once
-        // ioreg fills the pipe buffer on machines reporting many properties.
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else { return nil }
-        guard let output = String(data: data, encoding: .utf8) else { return nil }
-        let pattern = #"\"Device Utilization %\"\s*=\s*(\d+)"#
-        guard let expression = try? NSRegularExpression(pattern: pattern),
-              let match = expression.firstMatch(
-                in: output,
-                range: NSRange(output.startIndex..., in: output)
-              ),
-              let range = Range(match.range(at: 1), in: output),
-              let value = Double(output[range]) else {
+        guard let property = IORegistryEntryCreateCFProperty(
+                service, "PerformanceStatistics" as CFString, kCFAllocatorDefault, 0
+              )?.takeRetainedValue(),
+              let statistics = property as? [String: Any],
+              let value = (statistics["Device Utilization %"] as? NSNumber)?.doubleValue else {
             return nil
         }
         return min(100, max(0, value))

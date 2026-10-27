@@ -9,7 +9,9 @@ enum ModuleAxis: String, Codable {
 struct ModuleGroupView: View {
     let layout: ModuleLayout
     let liftedKind: MetricKind?
-    @ObservedObject var monitor: SystemMonitor
+    // Not observed here: only the cells read values, so a sample must not
+    // re-evaluate the whole group (material, shadow, dividers).
+    let monitor: SystemMonitor
 
     var body: some View {
         GeometryReader { geometry in
