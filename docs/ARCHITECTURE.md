@@ -6,6 +6,10 @@
 
 ## 구조도
 
+![potatus hub 구조도](architecture.png)
+
+위 그림은 큰 흐름만 그린 것이다(원본은 `architecture.svg`, 고치면 PNG도 다시 만든다). 빠짐없는 방향은 아래와 같다.
+
 ```mermaid
 flowchart TD
     App["App<br/>AppDelegate: 부품을 만들고 연결만"]
@@ -57,7 +61,7 @@ flowchart TD
 | `Layout/` | `ModuleLayout.swift` | 격자 모양(가로·세로·ㄴ자·2×2), 합치기·빼기, `ModuleAxis`, `MergeDirection` |
 | | `LayoutMetrics.swift` | 칸 크기 같은 치수 |
 | | `SnapEngine.swift` | 놓은 모듈이 어디에 붙을지 판단(ㄴ자 빈칸에 카드를 놓으면 그 칸 채우기 규칙 포함) |
-| | `DetachSpread.swift` | "분리" 때 칸마다 벌리는 양(이웃 사이 24pt) |
+| | `DetachSpread.swift` | "분리" 때 칸마다 벌리는 양(이웃 사이 24pt, 한 방향에 2칸뿐이면 48pt) |
 | `Panels/` | `ModulePanel.swift` | 창 하나와 마우스 처리(드래그, 길게 누르기, 더블클릭) |
 | | `ModuleView.swift` | 모듈 그리기(SwiftUI) |
 | | `PanelCoordinator.swift` | 창 목록, 항목 켜기·끄기, 보이기·숨기기, 정렬·결합·분리, 위치 저장·복원 |
@@ -68,7 +72,7 @@ flowchart TD
 | | `MenuBarImage.swift` | 표시 문구 만들기와 template 이미지 그리기 |
 | | `AppMenu.swift` | 우클릭 메뉴 만들기와 메뉴 동작 |
 
-시험은 `Tests/PotatusHubTests/`에 있다: `ModuleLayoutTests`, `SnapEngineTests`, `ShadowRenderingTests`, `MetricSamplerTests`, `AppSettingsTests`, `TransitionGateTests`, `MenuBarTests`.
+시험은 `Tests/PotatusHubTests/`에 있다: `ModuleLayoutTests`, `SnapEngineTests`, `ShadowRenderingTests`, `MetricSamplerTests`, `AppSettingsTests`, `TransitionGateTests`, `MenuBarTests`, `DetachSpreadTests`.
 
 ## 무엇을 고칠 때 어디를 여나
 
@@ -84,7 +88,8 @@ flowchart TD
 | 가로↔세로 전환 움직임 | `PanelCoordinator+Orientation.swift` |
 | 드래그·길게 누르기 감지 | `ModulePanel.swift` |
 | 메뉴 항목 추가·문구 | `AppMenu.swift` |
-| 메뉴바 표시 | `StatusItemController.swift` |
+| 메뉴바 표시(글자·간격·그리기) | `MenuBarImage.swift`, `StatusItemController.swift` |
+| 측정을 언제 돌리고 멈출지 | `SamplingPolicy.swift`, `AppDelegate.swift` |
 | 새 설정 저장 | `AppSettings.swift` |
 
 ## 지켜야 할 약속
