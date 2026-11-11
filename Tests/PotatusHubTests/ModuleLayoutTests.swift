@@ -129,4 +129,18 @@ final class ModuleLayoutTests: XCTestCase {
         let restored = try JSONDecoder().decode(ModuleLayout.self, from: JSONEncoder().encode(original))
         XCTAssertEqual(restored, original)
     }
+
+    func testAlreadyDisconnectedThreeCellsAreKeptWhenNothingIsRemoved() {
+        // Shape an old version may have saved: restoring must not flatten it,
+        // so it still splits into separate components.
+        let cells: [ModuleLayoutCell] = [
+            .init(kind: .ram, position: .init(column: 0, row: 0)),
+            .init(kind: .cpu, position: .init(column: 1, row: 1)),
+            .init(kind: .gpu, position: .init(column: 2, row: 0)),
+        ]
+        let layout = ModuleLayout(cells: cells).filtering([.ram, .cpu, .gpu])
+        XCTAssertEqual(layout.columnCount, 3)
+        XCTAssertEqual(layout.rowCount, 2)
+        XCTAssertEqual(layout.edgeConnectedComponents.count, 3)
+    }
 }

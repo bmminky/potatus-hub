@@ -16,9 +16,13 @@ final class DiskSampler: MetricSampler {
         ]
         guard let values = try? URL(fileURLWithPath: "/").resourceValues(forKeys: keys),
               let total = values.volumeTotalCapacity else { return nil }
-        var available = values.volumeAvailableCapacityForImportantUsage ?? 0
-        if available <= 0 {
-            available = Int64(values.volumeAvailableCapacity ?? 0)
+        let available: Int64
+        if let important = values.volumeAvailableCapacityForImportantUsage, important > 0 {
+            available = important
+        } else if let plain = values.volumeAvailableCapacity {
+            available = Int64(plain)
+        } else {
+            return nil
         }
         return Self.usage(total: Int64(total), available: available)
     }

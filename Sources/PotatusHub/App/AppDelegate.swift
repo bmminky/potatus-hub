@@ -49,7 +49,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated {
                     guard let self else { return }
-                    if isDisplay { self.displayAwake = state } else { self.sessionActive = state }
+                    if isDisplay {
+                        self.displayAwake = state
+                    } else {
+                        self.sessionActive = state
+                        // A missed screens-did-wake must not leave readouts frozen.
+                        if state { self.displayAwake = true }
+                    }
                     self.updateSampling()
                 }
             }

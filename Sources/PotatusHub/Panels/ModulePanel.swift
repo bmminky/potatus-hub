@@ -7,9 +7,9 @@ final class ModulePanel: NSPanel {
     /// clipped the blur to the window's square bounds, exposing its corners.
     /// This margin lets the shorter, subtler shadow fade out naturally.
     ///
-    /// Every place in this file and in AppDelegate that used to treat `frame`
-    /// as the visible card's bounds now goes through `visibleFrame` /
-    /// `setVisibleFrame` instead, so the margin is invisible to layout math:
+    /// Every place in this file and in PanelCoordinator that used to treat
+    /// `frame` as the visible card's bounds now goes through `visibleFrame` /
+    /// `setVisibleOrigin` / `windowSize(forVisible:)` instead, so the margin is invisible to layout math:
     /// docking gaps, merge unions, and cell hit-testing all keep working in
     /// visible-card coordinates.
     static let shadowMargin: CGFloat = 18
@@ -21,17 +21,6 @@ final class ModulePanel: NSPanel {
     /// Window size for a given visible card size.
     static func windowSize(forVisible visibleSize: NSSize) -> NSSize {
         NSSize(width: visibleSize.width + 2 * shadowMargin, height: visibleSize.height + 2 * shadowMargin)
-    }
-
-    /// Sets the window's frame from the desired *visible* card rect, doing the
-    /// margin conversion in one place rather than at each call site.
-    func setVisibleFrame(_ visibleRect: NSRect, display: Bool, animate: Bool = false) {
-        let windowFrame = visibleRect.insetBy(dx: -Self.shadowMargin, dy: -Self.shadowMargin)
-        if animate {
-            animator().setFrame(windowFrame, display: display)
-        } else {
-            setFrame(windowFrame, display: display)
-        }
     }
 
     /// Moves the window so the visible card's origin lands at `point`, without

@@ -1,4 +1,4 @@
-import AppKit
+import Foundation
 
 enum ModuleAxis: String, Codable {
     case horizontal
@@ -206,7 +206,9 @@ struct ModuleLayout: Codable, Hashable {
         var result = ModuleLayout(cells: remaining)
         // Three survivors of a 2D group that no longer share edges (e.g. the
         // middle of a T was removed): lay them out in reading order as a row.
-        if remaining.count == 3, columnCount > 1, rowCount > 1, !result.isEdgeConnected {
+        // Only when a cell was actually removed: an old saved shape that is
+        // already disconnected is returned as is (it is split on restore).
+        if remaining.count == 3, remaining.count < cells.count, columnCount > 1, rowCount > 1, !result.isEdgeConnected {
             return ModuleLayout(kinds: result.kinds, axis: .horizontal)
         }
         if columnCount == 1 {

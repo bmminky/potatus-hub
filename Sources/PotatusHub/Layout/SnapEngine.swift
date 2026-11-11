@@ -36,7 +36,19 @@ enum SnapEngine {
         let decision: Decision
     }
 
-    static func decide(moving: CGRect, targets: [Target]) -> Decision? {
+    /// `movingIsSingleCard`: the moved thing is one card (not a group). Only
+    /// then the empty-slot rule below applies.
+    static func decide(moving: CGRect, movingIsSingleCard: Bool = false, targets: [Target]) -> Decision? {
+        // A single card dropped into the empty slot of an L-shaped group fills
+        // that slot, whatever the edge-distance rules would say.
+        if movingIsSingleCard {
+            for (index, target) in targets.enumerated() {
+                if let decision = emptySlotDecision(moving: moving, index: index, target: target) {
+                    return decision
+                }
+            }
+        }
+
         var best: Candidate?
 
         func consider(_ candidate: Candidate) {
@@ -96,6 +108,37 @@ enum SnapEngine {
             }
         }
 
+        return best?.decision
+    }
+
+    private static func emptySlotDecision(moving: CGRect, index: Int, target: Target) -> Decision? {
+        let center = CGPoint(x: moving.midX, y: moving.midY)
+        guard target.frame.contains(center),
+              !target.cells.contains(where: { $0.frame.contains(center) }) else { return nil }
+
+        func overlapsAnyCell(_ rect: CGRect) -> Bool {
+            target.cells.contains {
+                let overlap = rect.intersection($0.frame)
+                return !overlap.isNull && overlap.width > 0.5 && overlap.height > 0.5
+            }
+        }
+
+        var best: (distance: CGFloat, decision: Decision)?
+        for cell in target.cells {
+            let f = cell.frame
+            let neighbours: [(MergeDirection, CGRect)] = [
+                (.left, f.offsetBy(dx: -f.width, dy: 0)),
+                (.right, f.offsetBy(dx: f.width, dy: 0)),
+                (.above, f.offsetBy(dx: 0, dy: f.height)),
+                (.below, f.offsetBy(dx: 0, dy: -f.height)),
+            ]
+            for (side, rect) in neighbours where rect.contains(center) && !overlapsAnyCell(rect) {
+                let distance = hypot(f.midX - center.x, f.midY - center.y)
+                if best == nil || distance < best!.distance {
+                    best = (distance, Decision(targetIndex: index, side: side, origin: rect.origin, targetKind: cell.kind))
+                }
+            }
+        }
         return best?.decision
     }
 

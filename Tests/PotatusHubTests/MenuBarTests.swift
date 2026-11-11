@@ -41,9 +41,18 @@ final class MenuBarTests: XCTestCase {
         XCTAssertFalse(SamplingPolicy.shouldSample(panelVisible: false, menuBarKindsSelected: false, displayAwake: true, sessionActive: true))
     }
 
+    func testNumberBoxKeepsWidthStableBetweenOneAndTwoDigits() {
+        func width(_ text: String) -> CGFloat {
+            MenuBarImage.make(items: [.init(symbol: "memorychip", text: text)]).size.width
+        }
+        XCTAssertEqual(width("7%"), width("62%"))
+        XCTAssertEqual(width("—"), width("62%"))
+        XCTAssertGreaterThan(width("100%"), width("62%"))
+    }
+
     @MainActor
     func testRenderedImageIsTemplateAndFits() throws {
-        let items = MenuBarDisplay.items(kinds: Set(MetricKind.allCases), values: [.ram: 62, .cpu: 7, .gpu: nil, .disk: 96])
+        let items = MenuBarDisplay.items(kinds: Set(MetricKind.allCases), values: [.ram: 62, .cpu: 7, .gpu: nil, .disk: 100])
         let image = MenuBarImage.make(items: items)
         XCTAssertTrue(image.isTemplate)
         XCTAssertEqual(image.size.height, 18)

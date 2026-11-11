@@ -1,6 +1,6 @@
 import AppKit
 
-/// AppDelegate owns the menu-bar icon and the module panels. A placeholder
+/// AppDelegate wires the menu-bar icon and the module panels together. A placeholder
 /// SwiftUI Settings scene could appear as an empty window on a fresh launch.
 @main
 @MainActor

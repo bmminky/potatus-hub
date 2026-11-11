@@ -21,6 +21,8 @@ flowchart TD
     MenuBar -->|명령| Panels
     MenuBar -->|값 읽기| Metrics
     MenuBar --> Settings
+    MenuBar -->|로그인 실행·정보 창·문구| App
+    Settings -->|항목 이름만| Metrics
     Panels -->|값 읽기| Metrics
     Panels --> Layout
     Panels --> Settings
@@ -30,8 +32,9 @@ flowchart TD
 
 화살표는 "쓰는 방향"이다. 반대 방향으로는 쓰지 않는다.
 
-- `Metrics`와 `Layout`은 화면을 모른다. `Panels`나 `MenuBar`를 import하거나 부르지 않는다.
-- `Panels`는 `MenuBar`를 모른다. 메뉴는 `Panels`의 공개 함수만 부른다.
+- `Metrics`와 `Layout`은 화면 부품(`Panels`, `MenuBar`)을 모른다. 색·크기 타입 때문에 SwiftUI·CoreGraphics는 쓴다.
+- `Panels`는 `MenuBar`를 모른다. 메뉴는 `PanelCoordinator`의 공개 함수와 읽기 전용 상태(`panels`, `isVisible`)만 쓴다.
+- `MenuBar`는 `App`의 `LaunchAtLogin`, `AboutPanel`, `L`(문구)을 쓴다.
 - `UserDefaults`는 `AppSettings`에서만 읽고 쓴다.
 
 ## 폴더와 파일
@@ -53,7 +56,8 @@ flowchart TD
 | | `SystemMonitor.swift` | 1초 타이머, 항목별 주기, 값 보관(`MetricValue`) |
 | `Layout/` | `ModuleLayout.swift` | 격자 모양(가로·세로·ㄴ자·2×2), 합치기·빼기, `ModuleAxis`, `MergeDirection` |
 | | `LayoutMetrics.swift` | 칸 크기 같은 치수 |
-| | `SnapEngine.swift` | 놓은 모듈이 어디에 붙을지 판단 |
+| | `SnapEngine.swift` | 놓은 모듈이 어디에 붙을지 판단(ㄴ자 빈칸에 카드를 놓으면 그 칸 채우기 규칙 포함) |
+| | `DetachSpread.swift` | "분리" 때 칸마다 벌리는 양(이웃 사이 24pt) |
 | `Panels/` | `ModulePanel.swift` | 창 하나와 마우스 처리(드래그, 길게 누르기, 더블클릭) |
 | | `ModuleView.swift` | 모듈 그리기(SwiftUI) |
 | | `PanelCoordinator.swift` | 창 목록, 항목 켜기·끄기, 보이기·숨기기, 정렬·결합·분리, 위치 저장·복원 |
@@ -73,7 +77,8 @@ flowchart TD
 | 측정 항목 추가 | `MetricKind.swift`에 case, `Metrics/`에 재는 파일 하나, `SystemMonitor.swift`의 재는 부품 목록 한 줄 |
 | 재는 방법·주기 바꾸기 | 그 항목의 `*Sampler.swift` |
 | 모듈 모양·색·글자 | `ModuleView.swift`, `MetricKind.swift` |
-| 붙는 거리·붙는 방향 판단 | `SnapEngine.swift` |
+| 붙는 거리·붙는 방향 판단, 빈칸 채우기 | `SnapEngine.swift` |
+| 분리 때 벌리는 양 | `DetachSpread.swift` |
 | 합친 모양 규칙(ㄴ자, 빼면 어떻게 되나) | `ModuleLayout.swift` |
 | 붙을 때·떼어낼 때 움직임 | `PanelCoordinator+Docking.swift` |
 | 가로↔세로 전환 움직임 | `PanelCoordinator+Orientation.swift` |
@@ -84,7 +89,7 @@ flowchart TD
 
 ## 지켜야 할 약속
 
-1. **좌표는 "보이는 카드" 기준으로 계산한다.** 창은 그림자 때문에 카드보다 사방 `ModulePanel.shadowMargin`만큼 크다. `Layout/`은 보이는 카드 좌표만 다루고, 창 좌표로 바꾸는 일은 `Panels/`가 `visibleFrame`·`setVisibleFrame`·`windowOrigin(forVisibleOrigin:)`으로 한다.
+1. **좌표는 "보이는 카드" 기준으로 계산한다.** 창은 그림자 때문에 카드보다 사방 `ModulePanel.shadowMargin`만큼 크다. `Layout/`은 보이는 카드 좌표만 다루고, 창 좌표로 바꾸는 일은 `Panels/`가 `visibleFrame`·`setVisibleOrigin`·`windowOrigin(forVisibleOrigin:)`으로 한다.
 2. **코드가 창을 움직일 때는 `TransitionGate`를 잡는다.** 잡고 있는 동안에는 `windowDidMove`가 붙이기를 다시 시작하지 않는다. `begin()`과 `end()`만 쓴다. 2초 넘게 안 풀리면 스스로 풀린다(애니메이션 완료가 안 불려도 붙이기가 먹통이 되지 않게).
 3. **값은 정수 %로 반올림해 바뀔 때만 알린다.** 각 칸은 자기 항목의 `MetricValue`만 본다. 한 항목이 바뀌어도 다른 칸은 다시 그리지 않는다.
 4. **측정은 필요할 때만 돈다.** 모듈이 화면에 보이거나(이때는 화면 꺼짐·잠금이 가려짐 상태로 이미 반영된다), 메뉴바 표시 항목이 하나라도 있고 화면이 켜져 있고 세션이 활성일 때다(`SamplingPolicy`).

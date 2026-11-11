@@ -34,18 +34,23 @@ enum MenuBarImage {
             let icon: NSImage?
             let text: NSAttributedString
             let textSize: NSSize
+            /// Width of the number box: at least "00%", so 9% <-> 10% does not
+            /// push the neighbouring icon around.
+            let boxWidth: CGFloat
         }
+        let minimumWidth = ceil(NSAttributedString(string: "00%", attributes: attributes).size().width)
         let laid = items.map { item -> Laid in
             let icon = NSImage(systemSymbolName: item.symbol, accessibilityDescription: nil)?
                 .withSymbolConfiguration(config)
             let text = NSAttributedString(string: item.text, attributes: attributes)
-            return Laid(icon: icon, text: text, textSize: text.size())
+            let size = text.size()
+            return Laid(icon: icon, text: text, textSize: size, boxWidth: max(minimumWidth, ceil(size.width)))
         }
 
         var width = sidePadding * 2
         for (index, entry) in laid.enumerated() {
             if index > 0 { width += itemGap }
-            width += (entry.icon?.size.width ?? 0) + iconTextGap + ceil(entry.textSize.width)
+            width += (entry.icon?.size.width ?? 0) + iconTextGap + entry.boxWidth
         }
 
         let image = NSImage(size: NSSize(width: width, height: height), flipped: false) { _ in
@@ -58,8 +63,12 @@ enum MenuBarImage {
                     x += size.width
                 }
                 x += iconTextGap
-                entry.text.draw(at: NSPoint(x: x, y: (height - entry.textSize.height) / 2))
-                x += ceil(entry.textSize.width)
+                // Numbers align right in their box; the "—" placeholder centres.
+                let slack = entry.boxWidth - ceil(entry.textSize.width)
+                let isPlaceholder = !(entry.text.string.last == "%")
+                let textX = x + (isPlaceholder ? slack / 2 : slack)
+                entry.text.draw(at: NSPoint(x: textX, y: (height - entry.textSize.height) / 2))
+                x += entry.boxWidth
             }
             return true
         }
