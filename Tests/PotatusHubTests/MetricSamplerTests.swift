@@ -28,6 +28,13 @@ final class MetricSamplerTests: XCTestCase {
         XCTAssertTrue((0...100).contains(value))
     }
 
+    func testDiskIsWithinRangeAndUsageMath() throws {
+        let value = try XCTUnwrap(DiskSampler().sample())
+        XCTAssertTrue((0...100).contains(value))
+        XCTAssertEqual(DiskSampler.usage(total: 200, available: 50), 75)
+        XCTAssertNil(DiskSampler.usage(total: 0, available: 0))
+    }
+
     func testCPUFirstSampleIsNilThenInRange() {
         let cpu = CPUSampler()
         XCTAssertNil(cpu.sample())

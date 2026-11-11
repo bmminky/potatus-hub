@@ -19,7 +19,7 @@ final class MetricValue: ObservableObject {
 final class SystemMonitor {
     /// The list of things to measure. A new metric adds one line here.
     nonisolated static func defaultSamplers() -> [MetricSampler] {
-        [MemorySampler(), CPUSampler(), GPUSampler()]
+        [MemorySampler(), CPUSampler(), GPUSampler(), DiskSampler()]
     }
 
     private let samplers: [MetricSampler]
