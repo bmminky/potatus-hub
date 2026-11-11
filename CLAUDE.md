@@ -8,7 +8,7 @@ potatus hub는 RAM·CPU·GPU·디스크 사용률을 떠 있는 모듈 창과 �
 
 - **기능을 추가하거나 고치기 전에 `docs/ARCHITECTURE.md`를 먼저 읽는다.** 구조도, 파일별 맡은 일, "무엇을 고칠 때 어디를 여나" 표, 지켜야 할 약속이 있다. 그 표에서 고른 파일만 연다.
 - 구조가 바뀌면(파일을 만들거나 옮기거나, 부품끼리 쓰는 방향이 바뀌면) 같은 커밋에서 `docs/ARCHITECTURE.md`도 고친다.
-- 새 세션은 `docs/HANDOFF.md`(맨 위 상태표, 이어서 할 일)부터 읽는다.
+- 새 세션은 `docs/HANDOFF.md`(맨 위 상태표, 이어서 할 일)부터 읽는다. 이 파일은 공개 저장소에 올리지 않으려고 `.gitignore`에 넣었다. 공유 폴더 `/Users/mini/Claude_app/PotatusHub/docs/HANDOFF.md`에만 있으니, 작업 폴더(worktree) 세션도 그 경로에서 읽고 고친다. 커밋하지 않는다.
 
 ## 빌드·시험
 
