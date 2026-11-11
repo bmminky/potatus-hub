@@ -54,7 +54,7 @@ struct ModuleLayout: Codable, Hashable {
 
     var size: NSSize {
         NSSize(
-            width: ModulePanel.cellSize.width * CGFloat(columnCount),
+            width: LayoutMetrics.cellSize.width * CGFloat(columnCount),
             height: cellHeight * CGFloat(rowCount)
         )
     }
@@ -63,7 +63,7 @@ struct ModuleLayout: Codable, Hashable {
     /// The sole exception is an exact three-module vertical stack: its 69pt
     /// pitch makes the complete stack match the 207pt large panel height.
     var cellHeight: CGFloat {
-        isThreeModuleVerticalStack ? ModulePanel.cellSize.height : ModulePanel.singlePanelHeight
+        isThreeModuleVerticalStack ? LayoutMetrics.cellSize.height : LayoutMetrics.singlePanelHeight
     }
 
     private var isThreeModuleVerticalStack: Bool {

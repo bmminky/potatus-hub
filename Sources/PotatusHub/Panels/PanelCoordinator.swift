@@ -8,16 +8,11 @@ import QuartzCore
 /// `+Orientation`.
 @MainActor
 final class PanelCoordinator: NSObject, NSWindowDelegate {
-    struct SavedGroup: Codable {
-        let kinds: [MetricKind]
-        let axis: ModuleAxis
-        let layout: ModuleLayout?
-        let frame: String
-    }
-
     let monitor: SystemMonitor
+    let settings: AppSettings
+    /// Set while code (not the user) is moving windows; see `TransitionGate`.
+    let gate = TransitionGate()
     var panels: [ModulePanel] = []
-    var isApplyingSnap = false
     var pendingSnaps: [ObjectIdentifier: DispatchWorkItem] = [:]
     var extractionSession: ExtractionSession?
     var isAnimatingPresentation = false
@@ -34,18 +29,12 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
     /// The screen the menu-bar icon is on, used to place and arrange panels.
     var screenProvider: () -> NSScreen? = { nil }
 
-    static let visibilityPrefix = "PotatusHub.visible."
-    static let legacyFramePrefix = "PotatusHub.frame."
-    static let groupsKey = "PotatusHub.groups.v1"
-    static let savedShadowMarginKey = "PotatusHub.savedShadowMargin"
-    let snapDistance: CGFloat = 28
-    let minimumMergeOverlap = NSSize(width: 30, height: 22)
-    let horizontalLaneTolerance: CGFloat = 32
-    let verticalLaneTolerance: CGFloat = 64
 
-    init(monitor: SystemMonitor) {
+    init(monitor: SystemMonitor, settings: AppSettings = .shared) {
         self.monitor = monitor
+        self.settings = settings
         super.init()
+        gate.onTimeout = { [weak self] in self?.saveLayout() }
     }
 
     func togglePanelPresentation() {
@@ -95,7 +84,7 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
         var x = screen.visibleFrame.maxX - totalWidth - 18
         let y = screen.visibleFrame.maxY - 88
 
-        isApplyingSnap = true
+        gate.begin()
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.18
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
@@ -105,7 +94,7 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
             }
         } completionHandler: { [weak self] in
             Task { @MainActor in
-                self?.isApplyingSnap = false
+                self?.gate.end()
                 self?.saveLayout()
             }
         }
@@ -119,7 +108,7 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
         let x = screen.visibleFrame.maxX - widest - 18
         var y = screen.visibleFrame.maxY - 18
 
-        isApplyingSnap = true
+        gate.begin()
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.18
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
@@ -130,14 +119,14 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
             }
         } completionHandler: { [weak self] in
             Task { @MainActor in
-                self?.isApplyingSnap = false
+                self?.gate.end()
                 self?.saveLayout()
             }
         }
     }
 
     func combineAllModules() {
-        guard panels.count > 1, !isAnimatingPresentation, !isApplyingSnap,
+        guard panels.count > 1, !isAnimatingPresentation, !gate.isBusy,
               extractionSession == nil else { return }
         finishOrientationAnimation()
         let cells = panels.flatMap { panel in
@@ -169,7 +158,7 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
             origin.y = max(screen.minY + 4, min(origin.y, screen.maxY - layout.size.height - 4))
         }
         let wasPresented = panels.contains { $0.isVisible }
-        isApplyingSnap = true
+        gate.begin()
         let previous = panels
         previous.forEach(removePanel)
         let combined = makePanel(layout: layout, origin: windowOrigin(forVisibleOrigin: origin))
@@ -177,7 +166,7 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
             combined.orderFrontRegardless()
             combined.animatePudding(axis: axis)
         }
-        isApplyingSnap = false
+        gate.end()
         saveLayout()
     }
 
@@ -204,11 +193,11 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
             // large height, while every standalone card is 78pt tall. Keep
             // each original cell's top edge fixed as it becomes a standalone
             // card, so detaching never makes the whole group jump upward.
-            let singleHeight = ModulePanel.singlePanelHeight
+            let singleHeight = LayoutMetrics.singlePanelHeight
             let start = CGRect(
                 x: frame.minX,
                 y: frame.maxY - singleHeight,
-                width: ModulePanel.cellSize.width,
+                width: LayoutMetrics.cellSize.width,
                 height: singleHeight
             )
             var target = start
@@ -226,7 +215,7 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
         // These frames intentionally start next to one another, so allowing
         // that callback through would schedule a new snap and immediately
         // recreate the very 2:1 grouping this command is meant to remove.
-        isApplyingSnap = true
+        gate.begin()
         let currentPanels = panels
         currentPanels.forEach(removePanel)
 
@@ -308,7 +297,7 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
         panel.onPanelDragEnded = { [weak self] panel in
             guard let self else { return }
             self.snap(panel)
-            if !self.isApplyingSnap { self.saveLayout() }
+            if !self.gate.isBusy { self.saveLayout() }
         }
         panel.setFrameOrigin(origin)
         panels.append(panel)
@@ -329,10 +318,8 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
         var repairedDisconnectedGroup = false
         // Previously saved frames used 14pt, 8pt or 0pt padding. Keep their
         // visible cards in place as the shadow's rendering margin changes.
-        let savedMargin = UserDefaults.standard.object(forKey: Self.savedShadowMarginKey)
-            .flatMap { $0 as? CGFloat } ?? 14
-        if let data = UserDefaults.standard.data(forKey: Self.groupsKey),
-           let groups = try? JSONDecoder().decode([SavedGroup].self, from: data) {
+        let savedMargin = settings.savedShadowMargin
+        if let groups = settings.loadGroups() {
             for saved in groups {
                 let allowed = Set(saved.kinds.filter { isVisible($0) && !restored.contains($0) })
                 let layout = (saved.layout ?? ModuleLayout(kinds: saved.kinds, axis: saved.axis))
@@ -342,7 +329,7 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
                 // saved.frame is the real (padded) window frame saveLayout()
                 // recorded; convert its origin back to visible-card space so
                 // the cell arithmetic below works in the same units as
-                // layout.cellHeight / ModulePanel.cellSize.
+                // layout.cellHeight / LayoutMetrics.cellSize.
                 let size = layout.size
                 let savedWindowOrigin = NSRectFromString(saved.frame).origin
                 var visibleFrame = NSRect(
@@ -365,7 +352,7 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
                     let minRow = cells.map(\.position.row).min() ?? 0
                     let topY = visibleFrame.maxY - CGFloat(minRow) * layout.cellHeight
                     let origin = NSPoint(
-                        x: visibleFrame.minX + CGFloat(minColumn) * ModulePanel.cellSize.width,
+                        x: visibleFrame.minX + CGFloat(minColumn) * LayoutMetrics.cellSize.width,
                         y: topY - component.size.height
                     )
                     let panel = makePanel(layout: component, origin: windowOrigin(forVisibleOrigin: origin))
@@ -375,8 +362,7 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
         }
 
         for kind in MetricKind.allCases where isVisible(kind) && !restored.contains(kind) {
-            let legacyKey = Self.legacyFramePrefix + kind.rawValue
-            let legacyFrame = UserDefaults.standard.string(forKey: legacyKey).map(NSRectFromString)
+            let legacyFrame = settings.legacyFrame(for: kind)
             // A legacy saved frame predates the shadow margin, so its origin
             // is already window-space (no conversion); the default fallback is
             // visible-space and needs padding out like everywhere else.
@@ -398,28 +384,24 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
         let groups = panels.map {
             SavedGroup(kinds: $0.kinds, axis: $0.axis, layout: $0.layout, frame: NSStringFromRect($0.frame))
         }
-        guard let data = try? JSONEncoder().encode(groups) else { return }
-        UserDefaults.standard.set(data, forKey: Self.groupsKey)
-        UserDefaults.standard.set(Double(ModulePanel.shadowMargin), forKey: Self.savedShadowMarginKey)
+        settings.saveGroups(groups, shadowMargin: ModulePanel.shadowMargin)
     }
 
     func isVisible(_ kind: MetricKind) -> Bool {
-        let key = Self.visibilityPrefix + kind.rawValue
-        if UserDefaults.standard.object(forKey: key) == nil { return true }
-        return UserDefaults.standard.bool(forKey: key)
+        settings.isVisible(kind)
     }
 
     func setVisible(_ visible: Bool, kind: MetricKind) {
-        UserDefaults.standard.set(visible, forKey: Self.visibilityPrefix + kind.rawValue)
+        settings.setVisible(visible, kind: kind)
     }
 
     func defaultOrigin(for kind: MetricKind) -> NSPoint {
         guard let screen = screenProvider() ?? NSScreen.main else { return .zero }
         let index = MetricKind.allCases.firstIndex(of: kind) ?? 0
         return NSPoint(
-            x: screen.visibleFrame.maxX - ModulePanel.cellSize.width - 18
-                - CGFloat(index) * (ModulePanel.cellSize.width + 8),
-            y: screen.visibleFrame.maxY - ModulePanel.singlePanelHeight - 18
+            x: screen.visibleFrame.maxX - LayoutMetrics.cellSize.width - 18
+                - CGFloat(index) * (LayoutMetrics.cellSize.width + 8),
+            y: screen.visibleFrame.maxY - LayoutMetrics.singlePanelHeight - 18
         )
     }
 

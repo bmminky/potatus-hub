@@ -30,7 +30,7 @@ extension PanelCoordinator {
                     timer.invalidate()
                     self.detachmentAnimation = nil
                     panels.forEach { $0.panel.setFrameOrigin($0.targetFrame.origin) }
-                    self.isApplyingSnap = false
+                    self.gate.end()
                     self.saveLayout()
                 }
             }
@@ -67,7 +67,7 @@ extension PanelCoordinator {
         var targetY: CGFloat
         if let sourceAnchor, let targetAnchor {
             targetX = sourceAnchor.midX
-                - (CGFloat(targetAnchor.column) + 0.5) * ModulePanel.cellSize.width
+                - (CGFloat(targetAnchor.column) + 0.5) * LayoutMetrics.cellSize.width
             targetY = sourceAnchor.midY
                 - targetSize.height
                 + (CGFloat(targetAnchor.row) + 0.5) * targetLayout.cellHeight
@@ -101,7 +101,7 @@ extension PanelCoordinator {
         // Resizing changes the frame origin while its top edge is held fixed.
         // Do not let that programmatic movement enter the drag-snap pipeline:
         // a delayed snap could otherwise interrupt the spring after 0.12s.
-        isApplyingSnap = true
+        gate.begin()
         let savedMin = panel.minSize
         let savedMax = panel.maxSize
         let slack: CGFloat = 90
@@ -165,7 +165,7 @@ extension PanelCoordinator {
                 panel.minSize = savedMin
                 panel.maxSize = savedMax
                 panel.setFrame(targetFrame, display: true)
-                self.isApplyingSnap = false
+                self.gate.end()
                 self.saveLayout()
             }
         }
@@ -182,7 +182,7 @@ extension PanelCoordinator {
         pending.panel.minSize = pending.minSize
         pending.panel.maxSize = pending.maxSize
         pending.panel.setFrame(pending.targetFrame, display: true)
-        isApplyingSnap = false
+        gate.end()
         saveLayout()
     }
 

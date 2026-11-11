@@ -44,11 +44,11 @@ struct ModuleGroupView: View {
     private var cells: some View {
         ForEach(layout.cells, id: \.kind) { cell in
             let kind = cell.kind
-            ModuleCellView(kind: kind, height: layout.cellHeight, monitor: monitor)
+            ModuleCellView(kind: kind, height: layout.cellHeight, metric: monitor.metric(for: kind))
                 .opacity(liftedKind == kind ? 0.18 : 1)
                 .animation(.easeOut(duration: 0.14), value: liftedKind)
                 .offset(
-                    x: CGFloat(cell.position.column) * ModulePanel.cellSize.width,
+                    x: CGFloat(cell.position.column) * LayoutMetrics.cellSize.width,
                     y: CGFloat(cell.position.row) * layout.cellHeight
                 )
         }
@@ -71,9 +71,9 @@ private struct ModuleSurfaceShape: Shape {
         for cell in layout.cells {
             let position = cell.position
             let tile = CGRect(
-                x: rect.minX + CGFloat(position.column) * ModulePanel.cellSize.width,
+                x: rect.minX + CGFloat(position.column) * LayoutMetrics.cellSize.width,
                 y: rect.minY + CGFloat(position.row) * layout.cellHeight,
-                width: ModulePanel.cellSize.width,
+                width: LayoutMetrics.cellSize.width,
                 height: layout.cellHeight
             )
             let top = !contains(column: position.column, row: position.row - 1)
@@ -135,15 +135,15 @@ private struct ModuleDividerShape: Shape {
         var path = Path()
         for cell in layout.cells {
             let position = cell.position
-            let x = rect.minX + CGFloat(position.column) * ModulePanel.cellSize.width
+            let x = rect.minX + CGFloat(position.column) * LayoutMetrics.cellSize.width
             let y = rect.minY + CGFloat(position.row) * layout.cellHeight
             if contains(column: position.column + 1, row: position.row) {
-                path.move(to: CGPoint(x: x + ModulePanel.cellSize.width, y: y))
-                path.addLine(to: CGPoint(x: x + ModulePanel.cellSize.width, y: y + layout.cellHeight))
+                path.move(to: CGPoint(x: x + LayoutMetrics.cellSize.width, y: y))
+                path.addLine(to: CGPoint(x: x + LayoutMetrics.cellSize.width, y: y + layout.cellHeight))
             }
             if contains(column: position.column, row: position.row + 1) {
                 path.move(to: CGPoint(x: x, y: y + layout.cellHeight))
-                path.addLine(to: CGPoint(x: x + ModulePanel.cellSize.width, y: y + layout.cellHeight))
+                path.addLine(to: CGPoint(x: x + LayoutMetrics.cellSize.width, y: y + layout.cellHeight))
             }
         }
         return path
@@ -157,9 +157,9 @@ private struct ModuleDividerShape: Shape {
 private struct ModuleCellView: View {
     let kind: MetricKind
     let height: CGFloat
-    @ObservedObject var monitor: SystemMonitor
+    @ObservedObject var metric: MetricValue
 
-    private var value: Double? { monitor.value(for: kind) }
+    private var value: Double? { metric.value }
 
     var body: some View {
         VStack(spacing: 8) {
@@ -193,7 +193,7 @@ private struct ModuleCellView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .frame(width: ModulePanel.cellSize.width, height: height)
+        .frame(width: LayoutMetrics.cellSize.width, height: height)
     }
 
     private var formattedValue: String {

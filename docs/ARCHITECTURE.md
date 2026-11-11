@@ -41,7 +41,7 @@ flowchart TD
 |---|---|---|
 | `App/` | `PotatusHubApp.swift` | 시작점 |
 | | `AppDelegate.swift` | 부품 생성과 연결, 측정을 돌릴지 멈출지 결정, 종료 때 저장 |
-| | `AppSettings.swift` | 저장 키 전부: 모듈 켜짐, 메뉴바 표시 항목, 언어, 모듈 위치 |
+| | `AppSettings.swift` | 저장 키 전부: 모듈 켜짐, 메뉴바 표시 항목, 언어, 모듈 위치(`SavedGroup` 저장 모양도 여기) |
 | | `Localization.swift` | `L.t(ko:en:ja:zh:)` 4개 언어 문구 |
 | | `AboutPanel.swift` | 정보 창 |
 | | `LaunchAtLogin.swift` | 로그인 시 자동 실행 |
@@ -61,7 +61,7 @@ flowchart TD
 | `MenuBar/` | `StatusItemController.swift` | 메뉴바 아이콘, 클릭 처리, `[아이콘] 62%` 표시 |
 | | `AppMenu.swift` | 우클릭 메뉴 만들기와 메뉴 동작 |
 
-시험은 `Tests/PotatusHubTests/`에 있다: `ModuleLayoutTests`, `SnapEngineTests`, `ShadowRenderingTests`, `MetricSamplerTests`.
+시험은 `Tests/PotatusHubTests/`에 있다: `ModuleLayoutTests`, `SnapEngineTests`, `ShadowRenderingTests`, `MetricSamplerTests`, `AppSettingsTests`, `TransitionGateTests`.
 
 ## 무엇을 고칠 때 어디를 여나
 

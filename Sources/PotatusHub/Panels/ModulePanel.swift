@@ -3,11 +3,6 @@ import SwiftUI
 import QuartzCore
 
 final class ModulePanel: NSPanel {
-    // Matches potatoken hub exactly: 2 cells = its 320pt large width,
-    // 3 stacked cells = its 207pt large height.
-    static let cellSize = NSSize(width: 160, height: 69)
-    static let singlePanelHeight: CGFloat = 78
-
     /// Transparent room for the shape-following shadow. The 0pt experiment
     /// clipped the blur to the window's square bounds, exposing its corners.
     /// This margin lets the shorter, subtler shadow fade out naturally.
@@ -180,23 +175,11 @@ final class ModulePanel: NSPanel {
         // its screen rect from the frame itself.
         let visible = visibleFrame
         return NSRect(
-            x: visible.minX + CGFloat(position.column) * Self.cellSize.width,
+            x: visible.minX + CGFloat(position.column) * LayoutMetrics.cellSize.width,
             y: visible.maxY - CGFloat(position.row + 1) * layout.cellHeight,
-            width: Self.cellSize.width,
+            width: LayoutMetrics.cellSize.width,
             height: layout.cellHeight
         )
-    }
-
-    func closestKind(to screenPoint: NSPoint) -> MetricKind? {
-        kinds.min { lhs, rhs in
-            let lhsDistance = cellFrameOnScreen(for: lhs).map {
-                hypot($0.midX - screenPoint.x, $0.midY - screenPoint.y)
-            } ?? .greatestFiniteMagnitude
-            let rhsDistance = cellFrameOnScreen(for: rhs).map {
-                hypot($0.midX - screenPoint.x, $0.midY - screenPoint.y)
-            } ?? .greatestFiniteMagnitude
-            return lhsDistance < rhsDistance
-        }
     }
 
     func animatePudding(axis: ModuleAxis, intensity: CGFloat = 1) {
@@ -382,7 +365,7 @@ final class ModulePanel: NSPanel {
         let visibleHeight = frame.height - 2 * margin
         guard localX >= 0, localX < frame.width - 2 * margin,
               localY >= 0, localY < visibleHeight else { return nil }
-        let column = Int(localX / Self.cellSize.width)
+        let column = Int(localX / LayoutMetrics.cellSize.width)
         let row = Int((visibleHeight - localY) / layout.cellHeight)
         return layout.cells.first {
             $0.position.column == column && $0.position.row == row

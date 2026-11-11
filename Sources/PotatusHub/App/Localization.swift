@@ -12,14 +12,9 @@ enum L {
         case chinese
     }
 
-    private static let preferenceKey = "PotatusHub.languagePreference"
-
     static var languagePreference: Language {
-        get {
-            UserDefaults.standard.string(forKey: preferenceKey)
-                .flatMap(Language.init(rawValue:)) ?? .system
-        }
-        set { UserDefaults.standard.set(newValue.rawValue, forKey: preferenceKey) }
+        get { AppSettings.shared.language }
+        set { AppSettings.shared.language = newValue }
     }
 
     static var resolved: Language {

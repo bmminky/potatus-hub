@@ -6,7 +6,6 @@ extension PanelCoordinator {
     typealias MergeSide = MergeDirection
 
     struct SnapCandidate {
-        let score: CGFloat
         let origin: NSPoint
         let other: ModulePanel
         let side: MergeSide
@@ -23,7 +22,7 @@ extension PanelCoordinator {
 
     func windowDidMove(_ notification: Notification) {
         guard let moving = notification.object as? ModulePanel else { return }
-        guard !isApplyingSnap,
+        guard !gate.isBusy,
               !moving.isHandlingPointerInteraction else { return }
 
         let id = ObjectIdentifier(moving)
@@ -32,7 +31,7 @@ extension PanelCoordinator {
             guard let self, let moving else { return }
             self.pendingSnaps[id] = nil
             self.snap(moving)
-            if !self.isApplyingSnap { self.saveLayout() }
+            if !self.gate.isBusy { self.saveLayout() }
         }
         pendingSnaps[id] = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
@@ -40,123 +39,30 @@ extension PanelCoordinator {
 
     @discardableResult
     func snap(_ moving: ModulePanel) -> Bool {
-        guard !isApplyingSnap else { return false }
+        guard !gate.isBusy else { return false }
         let others = panels.filter { $0 !== moving && $0.isVisible }
-        var best: SnapCandidate?
-
-        for other in others {
-            let movingFrame = moving.visibleFrame
-            let otherFrame = other.visibleFrame
-            let overlap = movingFrame.intersection(otherFrame)
-            let preferredAxis = mergeAxis(for: movingFrame, relativeTo: otherFrame)
-            let targetKind = other.closestKind(to: NSPoint(x: movingFrame.midX, y: movingFrame.midY))
-
-            // A clear overlap is enough to join. The resulting combined panel
-            // still snaps to a clean row or column, so users don't need to
-            // align window edges precisely before releasing the drag.
-            if !overlap.isNull,
-               overlap.width >= minimumMergeOverlap.width,
-               overlap.height >= minimumMergeOverlap.height {
-                let (side, origin) = mergePlacement(
-                    axis: preferredAxis,
-                    moving: movingFrame,
-                    other: otherFrame
-                )
-                let overlapArea = overlap.width * overlap.height
-                consider(
-                    SnapCandidate(
-                        score: -overlapArea,
-                        origin: origin,
-                        other: other,
-                        side: side,
-                        targetKind: targetKind
-                    ),
-                    asBest: &best
-                )
-            }
-
-            let horizontal: [(MergeSide, CGFloat, CGFloat)] = [
-                (.left, otherFrame.minX - movingFrame.width, abs(movingFrame.midY - otherFrame.midY)),
-                (.right, otherFrame.maxX, abs(movingFrame.midY - otherFrame.midY)),
-            ]
-            for (side, x, crossDistance) in horizontal
-                where preferredAxis == .horizontal && crossDistance <= horizontalLaneTolerance {
-                let edgeDistance = abs(movingFrame.minX - x)
-                guard edgeDistance <= snapDistance else { continue }
-                consider(
-                    SnapCandidate(
-                        score: edgeDistance + crossDistance * 0.2,
-                        origin: NSPoint(x: x, y: otherFrame.minY),
-                        other: other,
-                        side: side,
-                        targetKind: targetKind
-                    ),
-                    asBest: &best
-                )
-            }
-
-            let vertical: [(MergeSide, CGFloat, CGFloat)] = [
-                (.below, otherFrame.minY - movingFrame.height, abs(movingFrame.midX - otherFrame.midX)),
-                (.above, otherFrame.maxY, abs(movingFrame.midX - otherFrame.midX)),
-            ]
-            for (side, y, crossDistance) in vertical
-                where preferredAxis == .vertical && crossDistance <= verticalLaneTolerance {
-                let edgeDistance = abs(movingFrame.minY - y)
-                guard edgeDistance <= snapDistance else { continue }
-                consider(
-                    SnapCandidate(
-                        score: edgeDistance + crossDistance * 0.2,
-                        origin: NSPoint(x: otherFrame.minX, y: y),
-                        other: other,
-                        side: side,
-                        targetKind: targetKind
-                    ),
-                    asBest: &best
-                )
-            }
+        let targets = others.map { other in
+            SnapEngine.Target(
+                frame: other.visibleFrame,
+                cells: other.kinds.compactMap { kind in
+                    other.cellFrameOnScreen(for: kind).map { SnapEngine.Cell(kind: kind, frame: $0) }
+                }
+            )
         }
-
-        guard let best else { return false }
-        animateMerge(moving, with: best)
+        guard let decision = SnapEngine.decide(moving: moving.visibleFrame, targets: targets) else {
+            return false
+        }
+        animateMerge(moving, with: SnapCandidate(
+            origin: decision.origin,
+            other: others[decision.targetIndex],
+            side: decision.side,
+            targetKind: decision.targetKind
+        ))
         return true
     }
 
-    func consider(_ candidate: SnapCandidate, asBest best: inout SnapCandidate?) {
-        if best == nil || candidate.score < best!.score {
-            best = candidate
-        }
-    }
-
-    /// Compare movement in each axis as a fraction of that axis's window size.
-    /// A module moved below another therefore selects a vertical stack even
-    /// though the cells are much wider than they are tall.
-    func mergeAxis(for moving: NSRect, relativeTo other: NSRect) -> ModuleAxis {
-        let horizontalDistance = abs(moving.midX - other.midX) / max(moving.width, other.width, 1)
-        let verticalDistance = abs(moving.midY - other.midY) / max(moving.height, other.height, 1)
-        return horizontalDistance >= verticalDistance ? .horizontal : .vertical
-    }
-
-    func mergePlacement(
-        axis: ModuleAxis,
-        moving: NSRect,
-        other: NSRect
-    ) -> (MergeSide, NSPoint) {
-        switch axis {
-        case .horizontal:
-            if moving.midX < other.midX {
-                return (.left, NSPoint(x: other.minX - moving.width, y: other.minY))
-            }
-            return (.right, NSPoint(x: other.maxX, y: other.minY))
-        case .vertical:
-            if moving.midY < other.midY {
-                return (.below, NSPoint(x: other.minX, y: other.minY - moving.height))
-            }
-            return (.above, NSPoint(x: other.minX, y: other.maxY))
-        }
-    }
-
     func animateMerge(_ moving: ModulePanel, with candidate: SnapCandidate) {
-        isApplyingSnap = true
+        gate.begin()
         // candidate.origin describes where the visible card should land;
         // moving.frame.origin is the real (padded) window origin, so convert
         // before driving the window animation.
@@ -205,7 +111,7 @@ extension PanelCoordinator {
     ) {
         guard panels.contains(where: { $0 === moving }),
               panels.contains(where: { $0 === other }) else {
-            isApplyingSnap = false
+            gate.end()
             return
         }
 
@@ -218,7 +124,7 @@ extension PanelCoordinator {
         // Never create a group from cells that only meet at a corner or have
         // an empty gap between them. They remain independent panels instead.
         guard layout.isEdgeConnected else {
-            isApplyingSnap = false
+            gate.end()
             return
         }
         let size = layout.size
@@ -258,7 +164,7 @@ extension PanelCoordinator {
                 group.animator().setFrame(finalFrame, display: true)
             } completionHandler: { [weak self] in
                 Task { @MainActor in
-                    self?.isApplyingSnap = false
+                    self?.gate.end()
                     self?.saveLayout()
                 }
             }
@@ -345,7 +251,7 @@ extension PanelCoordinator {
             return
         }
 
-        isApplyingSnap = true
+        gate.begin()
         source.setLiftedKind(nil)
         let newSize = ModulePanel.windowSize(forVisible: remainingLayout.size)
         // Keep the group's original anchor fixed. Removing a middle or leading
@@ -376,7 +282,7 @@ extension PanelCoordinator {
                 // and detached card have their final frames, so dropping onto
                 // another card merges immediately rather than leaving a card
                 // floating above it.
-                self.isApplyingSnap = false
+                self.gate.end()
                 if !self.snap(detached) {
                     self.saveLayout()
                 }
