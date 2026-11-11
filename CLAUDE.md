@@ -22,6 +22,8 @@ swift test
 - 설치는 `.build/potatus hub.app`을 `/Applications/potatus hub.app`으로 바꿔 넣는 것이다. 실행 중인 앱은 먼저 끈다.
 - "화면이 바뀐 변경"은 모듈 창의 모양·움직임, 메뉴바 표시, 우클릭 메뉴를 말한다. 👀 확인 대기 때는 설치하고 실행해 둔다.
 - 버전은 `Scripts/build-app.sh`의 `VERSION`과 `BUILD_NUMBER`다.
+- 빌드된 실행 파일 위치는 `swift build --show-bin-path`로 찾는다. 경로를 짐작해서 쓰지 않는다.
+- 실제 설정을 건드리지 않고 띄워 보려면 실행 파일만 번들 밖으로 복사해 실행한다(설정 도메인이 실행 파일 이름이 된다).
 - Windows 앱은 이 맥에서 빌드하지 못한다. Windows 쪽을 고치면 "Windows에서는 빌드·확인 못 함"이라고 보고에 적는다.
 
 ## 구조
