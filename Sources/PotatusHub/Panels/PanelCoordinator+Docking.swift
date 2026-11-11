@@ -5,13 +5,6 @@ import QuartzCore
 extension PanelCoordinator {
     typealias MergeSide = MergeDirection
 
-    struct SnapCandidate {
-        let origin: NSPoint
-        let other: ModulePanel
-        let side: MergeSide
-        let targetKind: MetricKind?
-    }
-
     struct ExtractionSession {
         let source: ModulePanel
         let kind: MetricKind
@@ -49,26 +42,25 @@ extension PanelCoordinator {
                 }
             )
         }
-        guard let decision = SnapEngine.decide(moving: moving.visibleFrame, targets: targets) else {
+        guard let decision = SnapEngine.decide(
+            moving: moving.visibleFrame,
+            movingIsSingleCard: moving.kinds.count == 1,
+            targets: targets
+        ) else {
             return false
         }
-        animateMerge(moving, with: SnapCandidate(
-            origin: decision.origin,
-            other: others[decision.targetIndex],
-            side: decision.side,
-            targetKind: decision.targetKind
-        ))
+        animateMerge(moving, with: decision, other: others[decision.targetIndex])
         return true
     }
 
-    func animateMerge(_ moving: ModulePanel, with candidate: SnapCandidate) {
+    func animateMerge(_ moving: ModulePanel, with decision: SnapEngine.Decision, other: ModulePanel) {
         gate.begin()
-        // candidate.origin describes where the visible card should land;
+        // decision.origin describes where the visible card should land;
         // moving.frame.origin is the real (padded) window origin, so convert
         // before driving the window animation.
         let targetOrigin = NSPoint(
-            x: candidate.origin.x - ModulePanel.shadowMargin,
-            y: candidate.origin.y - ModulePanel.shadowMargin
+            x: decision.origin.x - ModulePanel.shadowMargin,
+            y: decision.origin.y - ModulePanel.shadowMargin
         )
         let start = moving.frame.origin
         let dx = targetOrigin.x - start.x
@@ -94,9 +86,9 @@ extension PanelCoordinator {
                     guard let self, let moving else { return }
                     self.merge(
                         moving,
-                        with: candidate.other,
-                        side: candidate.side,
-                        targetKind: candidate.targetKind
+                        with: other,
+                        side: decision.side,
+                        targetKind: decision.targetKind
                     )
                 }
             }

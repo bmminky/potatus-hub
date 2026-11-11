@@ -6,10 +6,15 @@ import AppKit
 final class AppMenu: NSObject {
     private let coordinator: PanelCoordinator
     private let monitor: SystemMonitor
+    private let settings: AppSettings
+    private let onMenuBarKindsChanged: () -> Void
 
-    init(coordinator: PanelCoordinator, monitor: SystemMonitor) {
+    init(coordinator: PanelCoordinator, monitor: SystemMonitor,
+         settings: AppSettings = .shared, onMenuBarKindsChanged: @escaping () -> Void) {
         self.coordinator = coordinator
         self.monitor = monitor
+        self.settings = settings
+        self.onMenuBarKindsChanged = onMenuBarKindsChanged
         super.init()
     }
 
@@ -26,6 +31,8 @@ final class AppMenu: NSObject {
             item.state = coordinator.isVisible(kind) ? .on : .off
             menu.addItem(item)
         }
+
+        menu.addItem(menuBarMenuItem())
 
         menu.addItem(.separator())
         let hide = NSMenuItem(title: L.t(ko: "숨기기", en: "Hide", ja: "隠す", zh: "隐藏"), action: #selector(hidePanels), keyEquivalent: "")
@@ -77,6 +84,33 @@ final class AppMenu: NSObject {
     func showPanelMenu(_ panel: ModulePanel, event: NSEvent) {
         guard let view = panel.contentView else { return }
         NSMenu.popUpContextMenu(makeMenu(), with: event, for: view)
+    }
+
+    private func menuBarMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(
+            title: L.t(ko: "메뉴바에 표시", en: "Show in Menu Bar", ja: "メニューバーに表示", zh: "在菜单栏显示"),
+            action: nil, keyEquivalent: ""
+        )
+        let submenu = NSMenu()
+        let chosen = settings.menuBarKinds
+        for kind in MetricKind.allCases {
+            let option = NSMenuItem(title: kind.title, action: #selector(toggleMenuBarKind(_:)), keyEquivalent: "")
+            option.target = self
+            option.representedObject = kind.rawValue
+            option.state = chosen.contains(kind) ? .on : .off
+            submenu.addItem(option)
+        }
+        item.submenu = submenu
+        return item
+    }
+
+    @objc private func toggleMenuBarKind(_ sender: NSMenuItem) {
+        guard let rawValue = sender.representedObject as? String,
+              let kind = MetricKind(rawValue: rawValue) else { return }
+        var chosen = settings.menuBarKinds
+        if chosen.contains(kind) { chosen.remove(kind) } else { chosen.insert(kind) }
+        settings.menuBarKinds = chosen
+        onMenuBarKindsChanged()
     }
 
     private func languageMenuItem() -> NSMenuItem {

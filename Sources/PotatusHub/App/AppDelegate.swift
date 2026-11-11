@@ -4,11 +4,19 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let monitor = SystemMonitor()
     private lazy var coordinator = PanelCoordinator(monitor: monitor)
-    private lazy var menu = AppMenu(coordinator: coordinator, monitor: monitor)
+    private let settings = AppSettings.shared
+    private lazy var menu = AppMenu(coordinator: coordinator, monitor: monitor, settings: settings) { [weak self] in
+        self?.statusItemController.reload()
+        self?.updateSampling()
+    }
+    private var displayAwake = true
+    private var sessionActive = true
     private var statusItemController: StatusItemController!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItemController = StatusItemController(
+            monitor: monitor,
+            settings: settings,
             onToggle: { [weak self] in self?.coordinator.togglePanelPresentation() },
             menuProvider: { [weak self] in self?.menu.makeMenu() ?? NSMenu() }
         )
@@ -30,17 +38,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated { self?.updateSampling() }
         }
         let workspace = NSWorkspace.shared.notificationCenter
-        for name in [NSWorkspace.screensDidWakeNotification, NSWorkspace.sessionDidBecomeActiveNotification] {
+        // (notification, concerns the display (else the login session), new state)
+        let stateChanges: [(Notification.Name, Bool, Bool)] = [
+            (NSWorkspace.screensDidSleepNotification, true, false),
+            (NSWorkspace.screensDidWakeNotification, true, true),
+            (NSWorkspace.sessionDidResignActiveNotification, false, false),
+            (NSWorkspace.sessionDidBecomeActiveNotification, false, true),
+        ]
+        for (name, isDisplay, state) in stateChanges {
             workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.updateSampling() }
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    if isDisplay {
+                        self.displayAwake = state
+                    } else {
+                        self.sessionActive = state
+                        // A missed screens-did-wake must not leave readouts frozen.
+                        if state { self.displayAwake = true }
+                    }
+                    self.updateSampling()
+                }
             }
         }
         updateSampling()
     }
 
-    /// Sample only while some panel is actually on screen.
+    /// Sample only while a panel is on screen or a menu-bar readout is chosen
+    /// (see `SamplingPolicy`).
     private func updateSampling() {
-        if coordinator.panels.contains(where: { $0.occlusionState.contains(.visible) }) {
+        let shouldSample = SamplingPolicy.shouldSample(
+            panelVisible: coordinator.panels.contains { $0.occlusionState.contains(.visible) },
+            menuBarKindsSelected: !settings.menuBarKinds.isEmpty,
+            displayAwake: displayAwake,
+            sessionActive: sessionActive
+        )
+        if shouldSample {
             monitor.start()
         } else {
             monitor.stop()

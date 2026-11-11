@@ -1,4 +1,4 @@
-import AppKit
+import Foundation
 
 enum ModuleAxis: String, Codable {
     case horizontal
@@ -15,7 +15,7 @@ struct ModuleLayoutCell: Codable, Hashable {
     var position: ModuleGridPosition
 }
 
-/// A compact grid for the three supported modules. It preserves an L-shaped
+/// A compact grid for the supported modules (up to all of `MetricKind`). It preserves an L-shaped
 /// arrangement rather than flattening it back into a row or column.
 struct ModuleLayout: Codable, Hashable {
     var cells: [ModuleLayoutCell]
@@ -130,36 +130,26 @@ struct ModuleLayout: Codable, Hashable {
         side: MergeDirection,
         target: MetricKind?
     ) -> ModuleLayout {
-        // Adding one module to the side of a perpendicular row/column creates
-        // an L layout at the nearest cell instead of flattening the group.
+        // Adding one module next to the nearest cell: if the neighbouring grid
+        // slot on that side is free, take it. This keeps L shapes (and grows
+        // them into 2x2 or other four-cell shapes) instead of flattening.
+        // An occupied slot falls through to the bounding-box join below.
         if moving.cells.count == 1,
            let movingCell = moving.cells.first,
            let target,
-           let targetPosition = other.position(for: target),
-           side.axis == .horizontal,
-           other.columnCount == 1 {
-            let column = side == .left ? -1 : 1
-            return ModuleLayout(cells: other.cells + [
-                ModuleLayoutCell(
-                    kind: movingCell.kind,
-                    position: ModuleGridPosition(column: column, row: targetPosition.row)
-                ),
-            ])
-        }
-
-        if moving.cells.count == 1,
-           let movingCell = moving.cells.first,
-           let target,
-           let targetPosition = other.position(for: target),
-           side.axis == .vertical,
-           other.rowCount == 1 {
-            let row = side == .above ? -1 : 1
-            return ModuleLayout(cells: other.cells + [
-                ModuleLayoutCell(
-                    kind: movingCell.kind,
-                    position: ModuleGridPosition(column: targetPosition.column, row: row)
-                ),
-            ])
+           let targetPosition = other.position(for: target) {
+            var slot = targetPosition
+            switch side {
+            case .left: slot.column -= 1
+            case .right: slot.column += 1
+            case .above: slot.row -= 1
+            case .below: slot.row += 1
+            }
+            if !other.cells.contains(where: { $0.position == slot }) {
+                return ModuleLayout(cells: other.cells + [
+                    ModuleLayoutCell(kind: movingCell.kind, position: slot),
+                ])
+            }
         }
 
         var left = moving.cells
@@ -204,7 +194,7 @@ struct ModuleLayout: Codable, Hashable {
     }
 
     /// A row or column has no intentional blank space. If its middle cell is
-    /// removed, close that gap so the two survivors remain attached. Removing
+    /// removed, close that gap so the survivors remain attached. Removing
     /// the corner from an L leaves two cells that only touch diagonally; make
     /// those survivors an ordinary row instead of preserving that accidental
     /// diagonal relationship.
@@ -214,6 +204,13 @@ struct ModuleLayout: Codable, Hashable {
         }
 
         var result = ModuleLayout(cells: remaining)
+        // Three survivors of a 2D group that no longer share edges (e.g. the
+        // middle of a T was removed): lay them out in reading order as a row.
+        // Only when a cell was actually removed: an old saved shape that is
+        // already disconnected is returned as is (it is split on restore).
+        if remaining.count == 3, remaining.count < cells.count, columnCount > 1, rowCount > 1, !result.isEdgeConnected {
+            return ModuleLayout(kinds: result.kinds, axis: .horizontal)
+        }
         if columnCount == 1 {
             let rows = Array(Set(result.cells.map(\.position.row))).sorted()
             for index in result.cells.indices {

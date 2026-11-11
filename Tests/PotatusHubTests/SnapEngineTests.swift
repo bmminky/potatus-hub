@@ -67,4 +67,49 @@ final class SnapEngineTests: XCTestCase {
         XCTAssertEqual(d?.side, .above)
         XCTAssertEqual(d?.targetKind, .cpu)
     }
+
+    // MARK: empty slot of an L-shaped group
+
+    /// 2x2 grid minus one corner. Grid (column, row), row 0 on top.
+    private func lGroup(missing: (Int, Int)) -> (SnapEngine.Target, ModuleLayout, [(Int, Int)]) {
+        let kinds: [MetricKind] = [.ram, .cpu, .gpu]
+        let slots = [(0, 0), (1, 0), (0, 1), (1, 1)].filter { $0 != missing }
+        func frame(_ c: Int, _ r: Int) -> CGRect {
+            CGRect(x: CGFloat(c) * w, y: CGFloat(1 - r) * h, width: w, height: h)
+        }
+        let cells = zip(kinds, slots).map { SnapEngine.Cell(kind: $0, frame: frame($1.0, $1.1)) }
+        let layout = ModuleLayout(cells: zip(kinds, slots).map {
+            ModuleLayoutCell(kind: $0, position: .init(column: $1.0, row: $1.1))
+        })
+        let target = SnapEngine.Target(frame: CGRect(x: 0, y: 0, width: 2 * w, height: 2 * h), cells: cells)
+        return (target, layout, slots)
+    }
+
+    func testDroppingIntoEmptySlotFillsItInAllFourOrientations() throws {
+        for missing in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+            let (target, layout, _) = lGroup(missing: missing)
+            let slotOrigin = CGPoint(x: CGFloat(missing.0) * w, y: CGFloat(1 - missing.1) * h)
+            for jitter in [CGPoint(x: 0, y: 0), CGPoint(x: 12, y: -9), CGPoint(x: -15, y: 11)] {
+                let card = moving(x: slotOrigin.x + jitter.x, y: slotOrigin.y + jitter.y)
+                let d = try XCTUnwrap(SnapEngine.decide(moving: card, movingIsSingleCard: true, targets: [target]))
+                XCTAssertEqual(d.origin, slotOrigin, "missing \(missing) jitter \(jitter)")
+                let merged = ModuleLayout.merged(
+                    moving: ModuleLayout(kinds: [.disk]), other: layout, side: d.side, target: d.targetKind
+                )
+                XCTAssertEqual(merged.columnCount, 2)
+                XCTAssertEqual(merged.rowCount, 2)
+                XCTAssertEqual(merged.cells.count, 4)
+                XCTAssertEqual(merged.position(for: .disk), .init(column: missing.0, row: missing.1))
+            }
+        }
+    }
+
+    func testEmptySlotRuleIgnoredWhenMovingAGroup() {
+        let (target, _, _) = lGroup(missing: (1, 0))
+        let card = moving(x: w, y: h)   // centred in the empty slot
+        let withRule = SnapEngine.decide(moving: card, movingIsSingleCard: true, targets: [target])
+        let withoutRule = SnapEngine.decide(moving: card, movingIsSingleCard: false, targets: [target])
+        XCTAssertEqual(withRule?.origin, CGPoint(x: w, y: h))
+        XCTAssertNotEqual(withoutRule?.origin, withRule?.origin)
+    }
 }

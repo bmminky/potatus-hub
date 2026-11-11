@@ -177,39 +177,32 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
         // grouped at this instant. That makes "Detach" idempotent and avoids
         // a 2:1 leftover when a group has just changed orientation or another
         // module was already independent.
-        let cellFrames = panels.flatMap { panel in
-            panel.kinds.compactMap { kind in
-                panel.cellFrameOnScreen(for: kind).map { (kind, $0) }
+        var detachedFrames: [(MetricKind, CGRect, CGRect)] = []
+        for panel in panels {
+            // Spread by grid position within this group, so every neighbouring
+            // pair ends up 24pt apart. A card that was alone does not move.
+            let offsets = DetachSpread.offsets(for: panel.layout)
+            for kind in panel.kinds {
+                guard let frame = panel.cellFrameOnScreen(for: kind) else { continue }
+                // A three-row group uses 69pt cells to match potatoken hub's
+                // large height, while every standalone card is 78pt tall. Keep
+                // each original cell's top edge fixed as it becomes a standalone
+                // card, so detaching never makes the whole group jump upward.
+                let singleHeight = LayoutMetrics.singlePanelHeight
+                let start = CGRect(
+                    x: frame.minX,
+                    y: frame.maxY - singleHeight,
+                    width: LayoutMetrics.cellSize.width,
+                    height: singleHeight
+                )
+                var target = start
+                let offset = offsets[kind] ?? .zero
+                target.origin.x += offset.dx
+                target.origin.y += offset.dy
+                detachedFrames.append((kind, start, target))
             }
         }
-        guard !cellFrames.isEmpty else { return }
-
-        let groupBounds = cellFrames.map(\.1).reduce(CGRect.null) { $0.union($1) }
-        let detachedFrames = cellFrames.map { kind, frame -> (MetricKind, CGRect, CGRect) in
-            let dx = frame.midX - groupBounds.midX
-            let dy = frame.midY - groupBounds.midY
-            let spread: CGFloat = 24
-            // A three-row group uses 69pt cells to match potatoken hub's
-            // large height, while every standalone card is 78pt tall. Keep
-            // each original cell's top edge fixed as it becomes a standalone
-            // card, so detaching never makes the whole group jump upward.
-            let singleHeight = LayoutMetrics.singlePanelHeight
-            let start = CGRect(
-                x: frame.minX,
-                y: frame.maxY - singleHeight,
-                width: LayoutMetrics.cellSize.width,
-                height: singleHeight
-            )
-            var target = start
-            // Spread along the cell's dominant direction from the group's
-            // centre. A middle cell has no dominant direction and stays put.
-            if abs(dx) > abs(dy), abs(dx) > 1 {
-                target.origin.x += dx > 0 ? spread : -spread
-            } else if abs(dy) > 1 {
-                target.origin.y += dy > 0 ? spread : -spread
-            }
-            return (kind, start, target)
-        }
+        guard !detachedFrames.isEmpty else { return }
 
         // `setFrameOrigin` on each freshly made panel sends windowDidMove.
         // These frames intentionally start next to one another, so allowing
@@ -314,6 +307,9 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
     }
 
     func restorePanels() {
+        // Creating panels moves windows; restoring must only bring back what
+        // was saved, not start docking passes.
+        gate.begin()
         var restored = Set<MetricKind>()
         var repairedDisconnectedGroup = false
         // Previously saved frames used 14pt, 8pt or 0pt padding. Keep their
@@ -370,6 +366,8 @@ final class PanelCoordinator: NSObject, NSWindowDelegate {
                 ?? windowOrigin(forVisibleOrigin: defaultOrigin(for: kind))
             makePanel(kinds: [kind], origin: origin).orderFrontRegardless()
         }
+
+        gate.end()
 
         // Persist the repaired topology so a bad legacy shape cannot return
         // after the next relaunch.

@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="470" viewBox="0 0 680 470" role="img" font-family="-apple-system, 'Apple SD Gothic Neo', 'Helvetica Neue', sans-serif">
+  <title>potatus hub 구조도</title>
+  <desc>AppDelegate가 메뉴바와 모듈 창을 만들고, 두 화면 부품이 측정, 배치 계산, 설정 저장을 쓰는 구조</desc>
+  <rect x="0" y="0" width="680" height="470" fill="#FFFFFF"/>
+
+  <rect x="240" y="30" width="200" height="56" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="1"/>
+  <text x="340" y="53" text-anchor="middle" font-size="14" font-weight="600" fill="#2C2C2A">App (AppDelegate)</text>
+  <text x="340" y="72" text-anchor="middle" font-size="12" fill="#5F5E5A">부품을 만들고 연결만</text>
+
+  <rect x="60" y="140" width="240" height="56" rx="8" fill="#EEEDFE" stroke="#534AB7" stroke-width="1"/>
+  <text x="180" y="163" text-anchor="middle" font-size="14" font-weight="600" fill="#3C3489">MenuBar</text>
+  <text x="180" y="182" text-anchor="middle" font-size="12" fill="#534AB7">메뉴바 아이콘·우클릭 메뉴·점유율 표시</text>
+
+  <rect x="380" y="140" width="240" height="56" rx="8" fill="#EEEDFE" stroke="#534AB7" stroke-width="1"/>
+  <text x="500" y="163" text-anchor="middle" font-size="14" font-weight="600" fill="#3C3489">Panels</text>
+  <text x="500" y="182" text-anchor="middle" font-size="12" fill="#534AB7">모듈 창·드래그·붙이기·떼기</text>
+
+  <rect x="110" y="260" width="200" height="56" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="1"/>
+  <text x="210" y="283" text-anchor="middle" font-size="14" font-weight="600" fill="#085041">Metrics</text>
+  <text x="210" y="302" text-anchor="middle" font-size="12" fill="#0F6E56">RAM·CPU·GPU·디스크 측정</text>
+
+  <rect x="370" y="260" width="200" height="56" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="1"/>
+  <text x="470" y="283" text-anchor="middle" font-size="14" font-weight="600" fill="#085041">Layout</text>
+  <text x="470" y="302" text-anchor="middle" font-size="12" fill="#0F6E56">격자 모양·붙는 판단 (순수 계산)</text>
+
+  <rect x="40" y="370" width="600" height="50" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="1"/>
+  <text x="340" y="391" text-anchor="middle" font-size="14" font-weight="600" fill="#085041">AppSettings</text>
+  <text x="340" y="409" text-anchor="middle" font-size="12" fill="#0F6E56">저장되는 설정 전부 (UserDefaults는 여기서만)</text>
+
+  <g fill="none" stroke="#5F5E5A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M300 86 L300 112 L180 112 L180 138"/>
+    <path d="M175 131 L180 138 L185 131"/>
+    <path d="M380 86 L380 112 L500 112 L500 138"/>
+    <path d="M495 131 L500 138 L505 131"/>
+    <path d="M300 168 L378 168"/>
+    <path d="M371 163 L378 168 L371 173"/>
+    <path d="M200 196 L200 258"/>
+    <path d="M195 251 L200 258 L205 251"/>
+    <path d="M410 196 L410 228 L290 228 L290 258"/>
+    <path d="M285 251 L290 258 L295 251"/>
+    <path d="M470 196 L470 258"/>
+    <path d="M465 251 L470 258 L475 251"/>
+    <path d="M370 288 L312 288"/>
+    <path d="M319 283 L312 288 L319 293"/>
+    <path d="M85 196 L85 368"/>
+    <path d="M80 361 L85 368 L90 361"/>
+    <path d="M600 196 L600 368"/>
+    <path d="M595 361 L600 368 L605 361"/>
+  </g>
+
+  <text x="340" y="452" text-anchor="middle" font-size="12" fill="#5F5E5A">보라 = 눈에 보이는 화면 · 청록 = 화면 부품을 모르는 계산과 저장 · 화살표 = 쓰는 방향</text>
+</svg>
