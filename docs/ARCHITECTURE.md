@@ -25,6 +25,7 @@ flowchart TD
     Panels --> Layout
     Panels --> Settings
     Layout -->|항목 이름만| Metrics
+    Settings -->|저장 모양에 Layout 타입| Layout
 ```
 
 화살표는 "쓰는 방향"이다. 반대 방향으로는 쓰지 않는다.
@@ -45,11 +46,12 @@ flowchart TD
 | | `Localization.swift` | `L.t(ko:en:ja:zh:)` 4개 언어 문구 |
 | | `AboutPanel.swift` | 정보 창 |
 | | `LaunchAtLogin.swift` | 로그인 시 자동 실행 |
+| | `SamplingPolicy.swift` | 측정을 돌릴지 판단하는 순수 함수 |
 | `Metrics/` | `MetricKind.swift` | 항목 정의: 이름·아이콘·색 |
 | | `MetricSampler.swift` | 재는 부품의 규격 |
 | | `MemorySampler.swift`, `CPUSampler.swift`, `GPUSampler.swift`, `DiskSampler.swift` | 항목별 재는 부품 |
 | | `SystemMonitor.swift` | 1초 타이머, 항목별 주기, 값 보관(`MetricValue`) |
-| `Layout/` | `ModuleLayout.swift` | 격자 모양(가로·세로·ㄴ자), 합치기·빼기, `ModuleAxis`, `MergeDirection` |
+| `Layout/` | `ModuleLayout.swift` | 격자 모양(가로·세로·ㄴ자·2×2), 합치기·빼기, `ModuleAxis`, `MergeDirection` |
 | | `LayoutMetrics.swift` | 칸 크기 같은 치수 |
 | | `SnapEngine.swift` | 놓은 모듈이 어디에 붙을지 판단 |
 | `Panels/` | `ModulePanel.swift` | 창 하나와 마우스 처리(드래그, 길게 누르기, 더블클릭) |
@@ -58,10 +60,11 @@ flowchart TD
 | | `PanelCoordinator+Docking.swift` | 드래그 뒤 붙이기, 길게 눌러 떼기 |
 | | `PanelCoordinator+Orientation.swift` | 가로↔세로 전환, 분리 애니메이션 |
 | | `TransitionGate.swift` | "지금 자동으로 움직이는 중" 표시 |
-| `MenuBar/` | `StatusItemController.swift` | 메뉴바 아이콘, 클릭 처리, `[아이콘] 62%` 표시 |
+| `MenuBar/` | `StatusItemController.swift` | 메뉴바 아이콘, 클릭 처리, 고른 항목의 `[아이콘] 62%` 표시(값이 바뀔 때만 다시 그림) |
+| | `MenuBarImage.swift` | 표시 문구 만들기와 template 이미지 그리기 |
 | | `AppMenu.swift` | 우클릭 메뉴 만들기와 메뉴 동작 |
 
-시험은 `Tests/PotatusHubTests/`에 있다: `ModuleLayoutTests`, `SnapEngineTests`, `ShadowRenderingTests`, `MetricSamplerTests`, `AppSettingsTests`, `TransitionGateTests`.
+시험은 `Tests/PotatusHubTests/`에 있다: `ModuleLayoutTests`, `SnapEngineTests`, `ShadowRenderingTests`, `MetricSamplerTests`, `AppSettingsTests`, `TransitionGateTests`, `MenuBarTests`.
 
 ## 무엇을 고칠 때 어디를 여나
 
@@ -84,7 +87,7 @@ flowchart TD
 1. **좌표는 "보이는 카드" 기준으로 계산한다.** 창은 그림자 때문에 카드보다 사방 `ModulePanel.shadowMargin`만큼 크다. `Layout/`은 보이는 카드 좌표만 다루고, 창 좌표로 바꾸는 일은 `Panels/`가 `visibleFrame`·`setVisibleFrame`·`windowOrigin(forVisibleOrigin:)`으로 한다.
 2. **코드가 창을 움직일 때는 `TransitionGate`를 잡는다.** 잡고 있는 동안에는 `windowDidMove`가 붙이기를 다시 시작하지 않는다. `begin()`과 `end()`만 쓴다. 2초 넘게 안 풀리면 스스로 풀린다(애니메이션 완료가 안 불려도 붙이기가 먹통이 되지 않게).
 3. **값은 정수 %로 반올림해 바뀔 때만 알린다.** 각 칸은 자기 항목의 `MetricValue`만 본다. 한 항목이 바뀌어도 다른 칸은 다시 그리지 않는다.
-4. **측정은 필요할 때만 돈다.** 모듈이 화면에 보이거나, 메뉴바 표시 항목이 하나라도 켜져 있을 때다. 화면이 꺼지면 멈춘다.
+4. **측정은 필요할 때만 돈다.** 모듈이 화면에 보이거나(이때는 화면 꺼짐·잠금이 가려짐 상태로 이미 반영된다), 메뉴바 표시 항목이 하나라도 있고 화면이 켜져 있고 세션이 활성일 때다(`SamplingPolicy`).
 5. **붙어 있는 칸은 변을 맞대야 한다.** 모서리만 닿은 칸은 한 묶음이 아니다(`ModuleLayout.isEdgeConnected`).
 6. **세로 3단만 칸 높이가 69pt다**(potatoken hub의 큰 패널 높이 207pt에 맞춤). 그 밖에는 78pt다.
 7. **저장된 위치는 창 좌표다.** `AppSettings`에 그림자 여백 값도 같이 저장하고, 복원할 때 그 값으로 보이는 카드 위치를 되찾는다.
@@ -101,7 +104,7 @@ Claude 세션에서는 샌드박스 안에서 `swift build`가 막힌다. 샌드
 
 ## Windows 대응
 
-Windows 앱(`windows/PotatusHub/`)은 아직 이 구조로 나누지 않았다. 디스크 모듈과 트레이 표시도 아직 없다.
+Windows 앱(`windows/PotatusHub/`)은 아직 이 구조로 나누지 않았다. 디스크 모듈과 트레이 표시도 아직 없다(맥에는 있다).
 
 | 맥 | Windows |
 |---|---|

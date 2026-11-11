@@ -7,11 +7,9 @@ import Foundation
 /// so the position still gets saved.
 @MainActor
 final class TransitionGate {
-    static let defaultTimeout: TimeInterval = 2
-
     private let timeout: TimeInterval
 
-    init(timeout: TimeInterval = TransitionGate.defaultTimeout) {
+    init(timeout: TimeInterval = 2) {
         self.timeout = timeout
     }
 

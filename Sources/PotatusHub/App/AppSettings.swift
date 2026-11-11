@@ -20,6 +20,7 @@ final class AppSettings {
     private static let groupsKey = "PotatusHub.groups.v1"
     private static let savedShadowMarginKey = "PotatusHub.savedShadowMargin"
     private static let languageKey = "PotatusHub.languagePreference"
+    private static let menuBarKindsKey = "PotatusHub.menuBarKinds"
 
     private let defaults: UserDefaults
 
@@ -37,6 +38,21 @@ final class AppSettings {
 
     func setVisible(_ visible: Bool, kind: MetricKind) {
         defaults.set(visible, forKey: Self.visibilityPrefix + kind.rawValue)
+    }
+
+    // MARK: Menu-bar readouts (separate from the floating modules; default none)
+
+    /// Stored as an array of raw values in `MetricKind.allCases` order;
+    /// unknown strings are ignored when reading.
+    var menuBarKinds: Set<MetricKind> {
+        get {
+            let raw = defaults.stringArray(forKey: Self.menuBarKindsKey) ?? []
+            return Set(raw.compactMap(MetricKind.init(rawValue:)))
+        }
+        set {
+            let ordered = MetricKind.allCases.filter { newValue.contains($0) }.map(\.rawValue)
+            defaults.set(ordered, forKey: Self.menuBarKindsKey)
+        }
     }
 
     // MARK: Language
