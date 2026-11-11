@@ -1,12 +1,17 @@
-import SwiftUI
+import AppKit
 
+/// AppDelegate owns the menu-bar icon and the module panels. A placeholder
+/// SwiftUI Settings scene could appear as an empty window on a fresh launch.
 @main
-struct PotatusHubApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+@MainActor
+enum PotatusHubApp {
+    private static let appDelegate = AppDelegate()
 
-    var body: some Scene {
-        Settings {
-            EmptyView()
-        }
+    static func main() {
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        app.delegate = appDelegate
+        app.finishLaunching()
+        app.run()
     }
 }
