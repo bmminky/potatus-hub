@@ -4,8 +4,10 @@ import AppKit
 
 final class MenuBarTests: XCTestCase {
     func testSettingsRoundTripDefaultsAndUnknownStrings() {
-        let name = "PotatusHubTests.\(UUID().uuidString)"
+        // A fixed name: a random one left an empty plist behind on every run.
+        let name = "PotatusHubTests.MenuBar"
         let defaults = UserDefaults(suiteName: name)!
+        defaults.removePersistentDomain(forName: name)
         addTeardownBlock { defaults.removePersistentDomain(forName: name) }
         let settings = AppSettings(defaults: defaults)
         XCTAssertTrue(settings.menuBarKinds.isEmpty)

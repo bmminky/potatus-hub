@@ -3,8 +3,10 @@ import XCTest
 
 final class AppSettingsTests: XCTestCase {
     private func makeDefaults() -> UserDefaults {
-        let name = "PotatusHubTests.\(UUID().uuidString)"
+        // A fixed name: a random one left an empty plist behind on every run.
+        let name = "PotatusHubTests.AppSettings"
         let defaults = UserDefaults(suiteName: name)!
+        defaults.removePersistentDomain(forName: name)
         addTeardownBlock { defaults.removePersistentDomain(forName: name) }
         return defaults
     }
