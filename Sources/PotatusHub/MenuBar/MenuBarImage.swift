@@ -21,8 +21,8 @@ enum MenuBarDisplay {
 enum MenuBarImage {
     static let height: CGFloat = 18
     private static let fontSize: CGFloat = 12
-    private static let iconTextGap: CGFloat = 3
-    private static let itemGap: CGFloat = 8
+    private static let iconTextGap: CGFloat = 1
+    private static let itemGap: CGFloat = 5
     private static let sidePadding: CGFloat = 2
 
     static func make(items: [MenuBarDisplay.Item]) -> NSImage {
