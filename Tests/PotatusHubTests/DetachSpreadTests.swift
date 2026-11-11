@@ -63,6 +63,13 @@ final class DetachSpreadTests: XCTestCase {
         XCTAssertEqual(o[.gpu]?.dy, -24)
     }
 
+    func testTwoModuleGroupKeepsItsOld24PointSpreadEachWay() {
+        let row = DetachSpread.offsets(for: ModuleLayout(kinds: [.cpu, .gpu], axis: .horizontal))
+        XCTAssertEqual([row[.cpu]!.dx, row[.gpu]!.dx], [-24, 24])
+        let column = DetachSpread.offsets(for: ModuleLayout(kinds: [.cpu, .gpu], axis: .vertical))
+        XCTAssertEqual([column[.cpu]!.dy, column[.gpu]!.dy], [24, -24])
+    }
+
     func testSingleCardDoesNotMove() {
         XCTAssertEqual(DetachSpread.offsets(for: ModuleLayout(kinds: [.ram]))[.ram], CGVector(dx: 0, dy: 0))
     }
