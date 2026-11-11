@@ -1,11 +1,6 @@
 import SwiftUI
 import AppKit
 
-enum ModuleAxis: String, Codable {
-    case horizontal
-    case vertical
-}
-
 struct ModuleGroupView: View {
     let layout: ModuleLayout
     let liftedKind: MetricKind?
@@ -128,77 +123,6 @@ private struct ModuleSurfaceShape: Shape {
             path.addArc(center: CGPoint(x: rect.minX + r, y: rect.minY + r), radius: r, startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
         }
         path.closeSubpath()
-    }
-}
-
-/// Draws only edges facing empty space. Adjacent module cells therefore share
-/// the material continuously while the whole group keeps potatoken hub's thin,
-/// translucent white perimeter band.
-private struct ModuleBorderShape: Shape {
-    let layout: ModuleLayout
-    private let radius: CGFloat = 14
-
-    func path(in rect: CGRect) -> Path {
-        // Keep the perimeter stroke on the same continuous curve as the
-        // material surface. L-shaped groups still use the custom edge path
-        // below because they have intentional inner corners.
-        if layout.cells.count == layout.columnCount * layout.rowCount {
-            return RoundedRectangle(cornerRadius: radius, style: .continuous).path(in: rect)
-        }
-
-        var path = Path()
-        for cell in layout.cells {
-            let position = cell.position
-            let tile = CGRect(
-                x: rect.minX + CGFloat(position.column) * ModulePanel.cellSize.width,
-                y: rect.minY + CGFloat(position.row) * layout.cellHeight,
-                width: ModulePanel.cellSize.width,
-                height: layout.cellHeight
-            )
-            let top = !contains(column: position.column, row: position.row - 1)
-            let bottom = !contains(column: position.column, row: position.row + 1)
-            let left = !contains(column: position.column - 1, row: position.row)
-            let right = !contains(column: position.column + 1, row: position.row)
-            let topLeft = top && left
-            let topRight = top && right
-            let bottomRight = bottom && right
-            let bottomLeft = bottom && left
-            let r = radius
-
-            if top {
-                path.move(to: CGPoint(x: tile.minX + (topLeft ? r : 0), y: tile.minY))
-                path.addLine(to: CGPoint(x: tile.maxX - (topRight ? r : 0), y: tile.minY))
-            }
-            if topRight {
-                path.addArc(center: CGPoint(x: tile.maxX - r, y: tile.minY + r), radius: r, startAngle: .degrees(-90), endAngle: .degrees(0), clockwise: false)
-            }
-            if right {
-                path.move(to: CGPoint(x: tile.maxX, y: tile.minY + (topRight ? r : 0)))
-                path.addLine(to: CGPoint(x: tile.maxX, y: tile.maxY - (bottomRight ? r : 0)))
-            }
-            if bottomRight {
-                path.addArc(center: CGPoint(x: tile.maxX - r, y: tile.maxY - r), radius: r, startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
-            }
-            if bottom {
-                path.move(to: CGPoint(x: tile.maxX - (bottomRight ? r : 0), y: tile.maxY))
-                path.addLine(to: CGPoint(x: tile.minX + (bottomLeft ? r : 0), y: tile.maxY))
-            }
-            if bottomLeft {
-                path.addArc(center: CGPoint(x: tile.minX + r, y: tile.maxY - r), radius: r, startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
-            }
-            if left {
-                path.move(to: CGPoint(x: tile.minX, y: tile.maxY - (bottomLeft ? r : 0)))
-                path.addLine(to: CGPoint(x: tile.minX, y: tile.minY + (topLeft ? r : 0)))
-            }
-            if topLeft {
-                path.addArc(center: CGPoint(x: tile.minX + r, y: tile.minY + r), radius: r, startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
-            }
-        }
-        return path
-    }
-
-    private func contains(column: Int, row: Int) -> Bool {
-        layout.cells.contains { $0.position.column == column && $0.position.row == row }
     }
 }
 

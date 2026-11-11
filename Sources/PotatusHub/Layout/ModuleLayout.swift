@@ -1,5 +1,10 @@
 import AppKit
 
+enum ModuleAxis: String, Codable {
+    case horizontal
+    case vertical
+}
+
 struct ModuleGridPosition: Codable, Hashable {
     var column: Int
     var row: Int

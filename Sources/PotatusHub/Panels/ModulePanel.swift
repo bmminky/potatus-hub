@@ -85,33 +85,8 @@ final class ModulePanel: NSPanel {
         downScreenPoint != nil || isDraggingPanel || isExtracting
     }
 
-    init(kinds: [MetricKind], axis: ModuleAxis = .horizontal, monitor: SystemMonitor) {
-        self.layout = ModuleLayout(kinds: kinds, axis: axis)
-        self.monitor = monitor
-        super.init(
-            contentRect: NSRect(origin: .zero, size: Self.windowSize(forVisible: layout.size)),
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-
-        isOpaque = false
-        backgroundColor = .clear
-        // AppKit's own window shadow is cast from the window's rectangular
-        // alpha mask, not the SwiftUI content's rounded shape (ModuleSurfaceShape)
-        // — against a busy/textured wallpaper that mismatch reads as a hard dark
-        // ring right at the rounded corners, exactly as in potatoken hub. A soft
-        // shadow drawn in SwiftUI (see ModuleGroupView) follows the actual shape
-        // instead.
-        hasShadow = false
-        level = .floating
-        // Window movement is driven below, from the same pointer state machine
-        // that owns long-press extraction. This prevents two drag owners.
-        isMovableByWindowBackground = false
-        hidesOnDeactivate = false
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        animationBehavior = .utilityWindow
-        rebuildContent()
+    convenience init(kinds: [MetricKind], axis: ModuleAxis = .horizontal, monitor: SystemMonitor) {
+        self.init(layout: ModuleLayout(kinds: kinds, axis: axis), monitor: monitor)
     }
 
     init(layout: ModuleLayout, monitor: SystemMonitor) {
@@ -134,6 +109,8 @@ final class ModulePanel: NSPanel {
         // instead.
         hasShadow = false
         level = .floating
+        // Window movement is driven below, from the same pointer state machine
+        // that owns long-press extraction. This prevents two drag owners.
         isMovableByWindowBackground = false
         hidesOnDeactivate = false
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
@@ -168,20 +145,8 @@ final class ModulePanel: NSPanel {
     /// looks worse than native.
     override var backingScaleFactor: CGFloat { 2 }
 
-    override func setFrame(_ frameRect: NSRect, display flag: Bool) {
-        super.setFrame(frameRect, display: flag)
-    }
-
-    override func setFrameOrigin(_ point: NSPoint) {
-        super.setFrameOrigin(point)
-    }
-
     func contains(_ kind: MetricKind) -> Bool {
         kinds.contains(kind)
-    }
-
-    func update(kinds: [MetricKind], axis: ModuleAxis, resizeToFit: Bool = true) {
-        update(layout: ModuleLayout(kinds: kinds, axis: axis), resizeToFit: resizeToFit)
     }
 
     func update(layout: ModuleLayout, resizeToFit: Bool = true) {
@@ -322,10 +287,6 @@ final class ModulePanel: NSPanel {
         default:
             super.sendEvent(event)
         }
-    }
-
-    static func size(for count: Int, axis: ModuleAxis) -> NSSize {
-        ModuleLayout(kinds: Array(MetricKind.allCases.prefix(count)), axis: axis).size
     }
 
     private var puddingTimingFunctions: [CAMediaTimingFunction] {
