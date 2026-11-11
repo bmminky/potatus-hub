@@ -34,11 +34,11 @@ enum MenuBarImage {
             let icon: NSImage?
             let text: NSAttributedString
             let textSize: NSSize
-            /// Width of the number box: at least "00%", so 9% <-> 10% does not
-            /// push the neighbouring icon around.
+            /// Width of the number box: at least "100%" (values top out at 100),
+            /// so 9% <-> 10% <-> 100% never changes the menu bar width.
             let boxWidth: CGFloat
         }
-        let minimumWidth = ceil(NSAttributedString(string: "00%", attributes: attributes).size().width)
+        let minimumWidth = ceil(NSAttributedString(string: "100%", attributes: attributes).size().width)
         let laid = items.map { item -> Laid in
             let icon = NSImage(systemSymbolName: item.symbol, accessibilityDescription: nil)?
                 .withSymbolConfiguration(config)
